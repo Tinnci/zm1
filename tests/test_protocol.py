@@ -128,6 +128,8 @@ class UDPClientTest(unittest.TestCase):
         self.assertEqual(response["mac"], "b0f89323ad46")
         self.assertEqual(response["brightness"], 3)
         self.assertEqual(response["name"], "zM1_AD46")
+        self.assertEqual(client.last_sensor_report["temperature"], "26.5")
+        self.assertEqual(client.last_sensor_report["humidity"], "58.8")
 
 
 if __name__ == "__main__":

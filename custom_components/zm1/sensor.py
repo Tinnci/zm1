@@ -8,7 +8,14 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, PERCENTAGE
+from homeassistant.const import (
+    CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
+    CONCENTRATION_MILLIGRAMS_PER_CUBIC_METER,
+    CONCENTRATION_PARTS_PER_MILLION,
+    EntityCategory,
+    PERCENTAGE,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -24,6 +31,61 @@ class ZM1SensorEntityDescription(SensorEntityDescription):
 
 
 SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
+    ZM1SensorEntityDescription(
+        key="temperature",
+        translation_key="temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "temperature"),
+    ),
+    ZM1SensorEntityDescription(
+        key="humidity",
+        translation_key="humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "humidity"),
+    ),
+    ZM1SensorEntityDescription(
+        key="formaldehyde",
+        translation_key="formaldehyde",
+        native_unit_of_measurement=CONCENTRATION_MILLIGRAMS_PER_CUBIC_METER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "formaldehyde"),
+    ),
+    ZM1SensorEntityDescription(
+        key="pm25",
+        translation_key="pm25",
+        device_class=SensorDeviceClass.PM25,
+        native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "PM25", "pm25"),
+    ),
+    ZM1SensorEntityDescription(
+        key="tvoc",
+        translation_key="tvoc",
+        device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS,
+        native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "TVOC", "tvoc"),
+    ),
+    ZM1SensorEntityDescription(
+        key="co2",
+        translation_key="co2",
+        device_class=SensorDeviceClass.CO2,
+        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "CO2", "co2"),
+    ),
+    ZM1SensorEntityDescription(
+        key="eco2",
+        translation_key="eco2",
+        device_class=SensorDeviceClass.CO2,
+        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda data: _numeric(data, "eCO2", "eco2"),
+    ),
     ZM1SensorEntityDescription(
         key="version",
         translation_key="version",
@@ -46,6 +108,18 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
         value_fn=lambda data: data.get("_last_seen"),
     ),
 )
+
+
+def _numeric(data: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = data.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 async def async_setup_entry(
@@ -71,4 +145,3 @@ class ZM1Sensor(ZM1Entity, SensorEntity):
     @property
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self.coordinator.data or {})
-

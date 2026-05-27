@@ -8,8 +8,22 @@ import time
 from typing import Any
 
 try:
+    from .const import SENSOR_REPORT_FIELDS
     from .protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload, normalize_mac
 except ImportError:  # Allows direct unittest imports without Home Assistant installed.
+    SENSOR_REPORT_FIELDS = {
+        "temperature",
+        "humidity",
+        "formaldehyde",
+        "PM25",
+        "pm25",
+        "TVOC",
+        "tvoc",
+        "CO2",
+        "co2",
+        "eCO2",
+        "eco2",
+    }
     from protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload, normalize_mac
 
 
@@ -40,6 +54,7 @@ class ZM1UDPClient:
         self.response_port = response_port
         self.timeout = timeout
         self.bind_host = bind_host
+        self.last_sensor_report: dict[str, Any] = {}
 
     async def send(self, values: dict[str, Any]) -> dict[str, Any]:
         """Send a zM1 command and wait for the JSON response."""
@@ -87,6 +102,10 @@ class ZM1UDPClient:
         """Start a device OTA update through UDP."""
         return await self.send({"setting": {"ota": ota_url}})
 
+    async def read_sensor_report(self, *, timeout: float = 5.5) -> dict[str, Any]:
+        """Wait for an unsolicited zM1 sensor report."""
+        return await asyncio.to_thread(self._read_sensor_report_sync, timeout)
+
     def _send_sync(
         self,
         payload: dict[str, Any],
@@ -116,6 +135,7 @@ class ZM1UDPClient:
                 payload = decode_payload(response)
                 if payload.get("mac") != self.mac:
                     continue
+                self._record_sensor_report(payload)
                 if not expected_fields or expected_fields.intersection(payload):
                     return payload
         except socket.timeout as err:
@@ -124,6 +144,42 @@ class ZM1UDPClient:
             raise ZM1Error(str(err)) from err
         finally:
             sock.close()
+
+    def _read_sensor_report_sync(self, timeout: float) -> dict[str, Any]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except OSError:
+                    pass
+            sock.settimeout(timeout)
+            sock.bind((self.bind_host, self.response_port))
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise socket.timeout
+                sock.settimeout(remaining)
+                response, _addr = sock.recvfrom(1024)
+                payload = decode_payload(response)
+                if payload.get("mac") != self.mac:
+                    continue
+                if self._record_sensor_report(payload):
+                    return payload
+        except socket.timeout:
+            return {}
+        except OSError as err:
+            raise ZM1Error(str(err)) from err
+        finally:
+            sock.close()
+
+    def _record_sensor_report(self, payload: dict[str, Any]) -> bool:
+        if not SENSOR_REPORT_FIELDS.intersection(payload):
+            return False
+        self.last_sensor_report = payload
+        return True
 
 
 async def discover(

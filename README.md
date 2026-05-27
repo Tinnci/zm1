@@ -19,6 +19,8 @@ UDP mode does not require MQTT, Docker, add-ons, or any other service. zM1 adver
 
 zM1 sends UDP replies and unsolicited sensor packets to local UDP port `10181`. Home Assistant OS and Supervised normally run on the host network. If you run Home Assistant Container with bridge networking, publish or host-network UDP `10181`, otherwise state queries can time out even when mDNS discovery works. In that case the integration still creates the device entry and keeps retrying.
 
+Sensor packets currently observed from zM1 include temperature, humidity, formaldehyde, and PM2.5. The integration also exposes reserved TVOC, CO2, and eCO2 sensors so newer firmware fields appear automatically when reported.
+
 The MAC must be lowercase without separators, for example `b0f89323ad46`. The config flow accepts `b0:f8:93:23:ad:46` and normalizes it.
 
 ## Services

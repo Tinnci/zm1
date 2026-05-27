@@ -29,6 +29,27 @@
   },
   "entity": {
     "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "formaldehyde": {
+        "name": "Formaldehyde"
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "tvoc": {
+        "name": "TVOC"
+      },
+      "co2": {
+        "name": "CO2"
+      },
+      "eco2": {
+        "name": "eCO2"
+      },
       "version": {
         "name": "Version"
       },

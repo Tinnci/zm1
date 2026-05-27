@@ -86,6 +86,17 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             client = await self._async_get_udp_client()
             response = await client.query("brightness", "version", "name", "ota_progress")
+            data = self._merge_response(response)
+            if client.last_sensor_report:
+                data = self._merge_response(client.last_sensor_report, base=data)
+            try:
+                sensor_report = await client.read_sensor_report()
+            except ZM1Error as err:
+                _LOGGER.debug("Unable to read zM1 sensor report: %s", err)
+            else:
+                if sensor_report:
+                    data = self._merge_response(sensor_report, base=data)
+            return data
         except ZM1TimeoutError as err:
             try:
                 client = await self._async_get_udp_client(force_discovery=True)
@@ -98,7 +109,10 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ) from retry_err
         except ZM1Error as err:
             raise UpdateFailed(str(err)) from err
-        return self._merge_response(response)
+        data = self._merge_response(response)
+        if client.last_sensor_report:
+            data = self._merge_response(client.last_sensor_report, base=data)
+        return data
 
     async def async_send_command(self, values: dict[str, Any]) -> dict[str, Any] | None:
         """Send a command using the configured transport."""
@@ -255,8 +269,13 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             raise ConfigEntryNotReady("MQTT is not ready") from err
 
-    def _merge_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        data = dict(self.data or {})
+    def _merge_response(
+        self,
+        response: dict[str, Any],
+        *,
+        base: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        data = dict(base or self.data or {})
         data.update(response)
         if "name" in response and response["name"]:
             self.device_name = str(response["name"])
