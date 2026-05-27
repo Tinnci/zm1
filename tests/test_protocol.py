@@ -22,6 +22,7 @@ from protocol import (  # noqa: E402
     normalize_mac,
 )
 from udp import ZM1UDPClient  # noqa: E402
+from udp import find_discovered_host  # noqa: E402
 
 
 def free_udp_port() -> int:
@@ -71,6 +72,13 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(topics.state, "device/zm1/b0f89323ad46/state")
         self.assertEqual(topics.sensor, "device/zm1/b0f89323ad46/sensor")
 
+    def test_discovered_host_matches_mac(self) -> None:
+        responses = [
+            {"mac": "001122334455", "_addr": "192.168.3.10"},
+            {"mac": "b0f89323ad46", "_addr": "192.168.3.181"},
+        ]
+        self.assertEqual(find_discovered_host(responses, "B0:F8:93:23:AD:46"), "192.168.3.181")
+
 
 class UDPClientTest(unittest.TestCase):
     def test_udp_client_sends_json_to_command_port_and_waits_on_response_port(self) -> None:
@@ -118,4 +126,3 @@ class UDPClientTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

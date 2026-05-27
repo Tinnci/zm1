@@ -3,9 +3,18 @@
   "name": "zM1",
   "codeowners": [],
   "config_flow": true,
+  "dependencies": ["zeroconf"],
   "documentation": "https://github.com/Tinnci/zm1",
   "integration_type": "device",
   "iot_class": "local_polling",
   "version": "0.1.0",
-  "after_dependencies": ["mqtt"]
+  "after_dependencies": ["mqtt"],
+  "zeroconf": [
+    {
+      "type": "_zcontrol._tcp.local.",
+      "properties": {
+        "mac": "*"
+      }
+    }
+  ]
 }

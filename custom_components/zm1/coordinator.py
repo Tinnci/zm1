@@ -10,9 +10,11 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+from zeroconf import IPVersion
+from zeroconf.asyncio import AsyncServiceInfo
 
 from .const import (
     CONF_MAC,
@@ -21,6 +23,7 @@ from .const import (
     CONF_TRANSPORT,
     CONF_UDP_COMMAND_PORT,
     CONF_UDP_RESPONSE_PORT,
+    CONF_ZEROCONF_NAME,
     DEFAULT_MQTT_BASE_TOPIC,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_TIMEOUT,
@@ -29,6 +32,7 @@ from .const import (
     DOMAIN,
     TRANSPORT_MQTT,
     TRANSPORT_UDP,
+    ZM1_ZEROCONF_TYPE,
 )
 from .protocol import build_mqtt_topics, decode_payload, encode_payload, normalize_mac
 from .udp import ZM1Error, ZM1TimeoutError, ZM1UDPClient
@@ -43,19 +47,17 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self.mac = normalize_mac(entry.data[CONF_MAC])
         self.transport = entry.data[CONF_TRANSPORT]
-        self.host = entry.data.get(CONF_HOST)
+        self.configured_host = str(entry.data.get(CONF_HOST) or "").strip()
+        self.host = self.configured_host or None
+        self.zeroconf_name = str(entry.data.get(CONF_ZEROCONF_NAME) or "").strip()
+        self.command_port = entry.data.get(CONF_UDP_COMMAND_PORT, DEFAULT_UDP_COMMAND_PORT)
+        self.response_port = entry.data.get(CONF_UDP_RESPONSE_PORT, DEFAULT_UDP_RESPONSE_PORT)
         self.device_name = entry.data.get(CONF_NAME) or f"zM1 {self.mac[-4:].upper()}"
         self._mqtt_unsubs: list[CALLBACK_TYPE] = []
         self._udp_client: ZM1UDPClient | None = None
 
         if self.host:
-            self._udp_client = ZM1UDPClient(
-                self.host,
-                self.mac,
-                command_port=entry.data.get(CONF_UDP_COMMAND_PORT, DEFAULT_UDP_COMMAND_PORT),
-                response_port=entry.data.get(CONF_UDP_RESPONSE_PORT, DEFAULT_UDP_RESPONSE_PORT),
-                timeout=DEFAULT_TIMEOUT,
-            )
+            self._udp_client = self._new_udp_client(self.host)
 
         super().__init__(
             hass,
@@ -79,13 +81,15 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.transport == TRANSPORT_MQTT:
             return self.data or {}
 
-        if self._udp_client is None:
-            raise UpdateFailed("UDP host is not configured")
-
         try:
-            response = await self._udp_client.query("brightness", "version", "name", "ota_progress")
+            client = await self._async_get_udp_client()
+            response = await client.query("brightness", "version", "name", "ota_progress")
         except ZM1TimeoutError as err:
-            raise UpdateFailed("Timed out waiting for zM1 UDP response") from err
+            try:
+                client = await self._async_get_udp_client(force_discovery=True)
+                response = await client.query("brightness", "version", "name", "ota_progress")
+            except ZM1Error as retry_err:
+                raise UpdateFailed("Timed out waiting for zM1 UDP response") from retry_err
         except ZM1Error as err:
             raise UpdateFailed(str(err)) from err
         return self._merge_response(response)
@@ -93,9 +97,8 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_send_command(self, values: dict[str, Any]) -> dict[str, Any] | None:
         """Send a command using the configured transport."""
         if self.transport == TRANSPORT_UDP:
-            if self._udp_client is None:
-                raise HomeAssistantError("UDP host is not configured")
-            response = await self._udp_client.send(values)
+            client = await self._async_get_udp_client()
+            response = await client.send(values)
             self.async_set_updated_data(self._merge_response(response))
             return response
 
@@ -113,9 +116,8 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         mqtt_password: str | None,
     ) -> dict[str, Any]:
         """Write device MQTT settings over UDP."""
-        if self._udp_client is None:
-            raise HomeAssistantError("MQTT configuration requires a UDP host for the device")
-        response = await self._udp_client.configure_mqtt(
+        client = await self._async_get_udp_client()
+        response = await client.configure_mqtt(
             mqtt_uri=mqtt_uri,
             mqtt_port=mqtt_port,
             mqtt_user=mqtt_user,
@@ -126,11 +128,62 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_start_ota(self, ota_url: str) -> dict[str, Any]:
         """Start an OTA update over UDP."""
-        if self._udp_client is None:
-            raise HomeAssistantError("OTA requires a UDP host for the device")
-        response = await self._udp_client.start_ota(ota_url)
+        client = await self._async_get_udp_client()
+        response = await client.start_ota(ota_url)
         self.async_set_updated_data(self._merge_response(response))
         return response
+
+    def _new_udp_client(self, host: str) -> ZM1UDPClient:
+        return ZM1UDPClient(
+            host,
+            self.mac,
+            command_port=self.command_port,
+            response_port=self.response_port,
+            timeout=DEFAULT_TIMEOUT,
+        )
+
+    async def _async_get_udp_client(self, *, force_discovery: bool = False) -> ZM1UDPClient:
+        if self._udp_client is not None and not force_discovery:
+            return self._udp_client
+
+        if self.configured_host and not force_discovery:
+            self.host = self.configured_host
+            self._udp_client = self._new_udp_client(self.host)
+            return self._udp_client
+
+        if self.zeroconf_name:
+            host = await self._async_resolve_mdns_host()
+            if host:
+                self.host = host
+                self._udp_client = self._new_udp_client(host)
+                return self._udp_client
+
+        from .udp import discover, find_discovered_host
+
+        responses = await discover(
+            command_port=self.command_port,
+            response_port=self.response_port,
+            timeout=DEFAULT_TIMEOUT,
+        )
+        host = find_discovered_host(responses, self.mac)
+        if not host:
+            raise ZM1Error("Unable to discover zM1 UDP host")
+
+        self.host = host
+        self._udp_client = self._new_udp_client(host)
+        return self._udp_client
+
+    async def _async_resolve_mdns_host(self) -> str | None:
+        from homeassistant.components import zeroconf
+
+        zc = await zeroconf.async_get_instance(self.hass)
+        info = AsyncServiceInfo(ZM1_ZEROCONF_TYPE, self.zeroconf_name)
+        if not await info.async_request(zc, DEFAULT_TIMEOUT * 1000):
+            return None
+        addresses = info.parsed_addresses(IPVersion.V4Only)
+        if not addresses:
+            addresses = info.parsed_addresses()
+        return addresses[0] if addresses else None
 
     async def _async_publish_mqtt(self, values: dict[str, Any]) -> None:
         from homeassistant.components import mqtt

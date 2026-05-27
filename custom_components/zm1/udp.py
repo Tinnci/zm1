@@ -7,9 +7,9 @@ import socket
 from typing import Any
 
 try:
-    from .protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload
+    from .protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload, normalize_mac
 except ImportError:  # Allows direct unittest imports without Home Assistant installed.
-    from protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload
+    from protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload, normalize_mac
 
 
 class ZM1Error(Exception):
@@ -113,6 +113,18 @@ async def discover(
     )
 
 
+def find_discovered_host(responses: list[dict[str, Any]], mac: str) -> str | None:
+    """Return the source address for a discovered zM1 device."""
+    normalized_mac = normalize_mac(mac)
+    for response in responses:
+        if response.get("mac") != normalized_mac:
+            continue
+        host = response.get("_addr")
+        if isinstance(host, str) and host:
+            return host
+    return None
+
+
 def _discover_sync(
     broadcast_address: str,
     command_port: int,
@@ -138,4 +150,3 @@ def _discover_sync(
     finally:
         sock.close()
     return responses
-

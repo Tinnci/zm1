@@ -11,6 +11,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import (
     CONF_MAC,
@@ -18,6 +19,7 @@ from .const import (
     CONF_TRANSPORT,
     CONF_UDP_COMMAND_PORT,
     CONF_UDP_RESPONSE_PORT,
+    CONF_ZEROCONF_NAME,
     DEFAULT_MQTT_BASE_TOPIC,
     DEFAULT_UDP_COMMAND_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
@@ -25,9 +27,10 @@ from .const import (
     TRANSPORT_MQTT,
     TRANSPORT_UDP,
     TRANSPORTS,
+    ZM1_ZEROCONF_TYPE,
 )
 from .protocol import ZM1ProtocolError, normalize_mac
-from .udp import ZM1Error, ZM1UDPClient
+from .udp import ZM1Error, ZM1UDPClient, discover, find_discovered_host
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +39,55 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a zM1 config flow."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        self._discovered_data: dict[str, Any] = {}
+        self._discovered_title = ""
+
+    async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo) -> FlowResult:
+        """Handle zM1 mDNS discovery."""
+        try:
+            mac = normalize_mac(str(discovery_info.properties["mac"]))
+        except (KeyError, ZM1ProtocolError):
+            return self.async_abort(reason="invalid_mac")
+
+        await self.async_set_unique_id(mac)
+        self._abort_if_unique_id_configured(
+            updates={CONF_ZEROCONF_NAME: discovery_info.name}
+        )
+
+        port = discovery_info.port or DEFAULT_UDP_COMMAND_PORT
+        title = _discovery_title(discovery_info.name, mac)
+        self._discovered_title = title
+        self._discovered_data = {
+            CONF_MAC: mac,
+            CONF_NAME: title,
+            CONF_TRANSPORT: TRANSPORT_UDP,
+            CONF_HOST: "",
+            CONF_UDP_COMMAND_PORT: port,
+            CONF_UDP_RESPONSE_PORT: DEFAULT_UDP_RESPONSE_PORT,
+            CONF_MQTT_BASE_TOPIC: DEFAULT_MQTT_BASE_TOPIC,
+            CONF_ZEROCONF_NAME: discovery_info.name,
+        }
+        self.context["title_placeholders"] = {"name": title}
+        return await self.async_step_zeroconf_confirm()
+
+    async def async_step_zeroconf_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Confirm zM1 mDNS discovery."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title=self._discovered_title,
+                data=self._discovered_data,
+            )
+
+        self._set_confirm_only()
+        return self.async_show_form(
+            step_id="zeroconf_confirm",
+            description_placeholders={"name": self._discovered_title},
+        )
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
@@ -52,13 +104,30 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data[CONF_HOST] = host
             transport = data[CONF_TRANSPORT]
 
-            if transport == TRANSPORT_UDP and not host:
-                errors[CONF_HOST] = "host_required"
-
             response: dict[str, Any] = {}
             if not errors and transport == TRANSPORT_UDP:
+                validation_host = host
+                if not validation_host:
+                    responses = await discover(
+                        command_port=data[CONF_UDP_COMMAND_PORT],
+                        response_port=data[CONF_UDP_RESPONSE_PORT],
+                    )
+                    validation_host = find_discovered_host(responses, data[CONF_MAC]) or ""
+                    response = next(
+                        (item for item in responses if item.get("mac") == data[CONF_MAC]),
+                        {},
+                    )
+
+                if not validation_host:
+                    errors["base"] = "cannot_connect"
+                    return self.async_show_form(
+                        step_id="user",
+                        data_schema=_schema(),
+                        errors=errors,
+                    )
+
                 client = ZM1UDPClient(
-                    host,
+                    validation_host,
                     data[CONF_MAC],
                     command_port=data[CONF_UDP_COMMAND_PORT],
                     response_port=data[CONF_UDP_RESPONSE_PORT],
@@ -77,22 +146,33 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data[CONF_NAME] = name
                 if not data.get(CONF_MQTT_BASE_TOPIC):
                     data[CONF_MQTT_BASE_TOPIC] = DEFAULT_MQTT_BASE_TOPIC
+                data.setdefault(CONF_ZEROCONF_NAME, "")
 
                 return self.async_create_entry(title=name, data=data)
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_MAC): str,
-                    vol.Optional(CONF_NAME, default=""): str,
-                    vol.Required(CONF_TRANSPORT, default=TRANSPORT_UDP): vol.In(TRANSPORTS),
-                    vol.Optional(CONF_HOST, default=""): str,
-                    vol.Optional(CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT): cv.port,
-                    vol.Optional(CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT): cv.port,
-                    vol.Optional(CONF_MQTT_BASE_TOPIC, default=DEFAULT_MQTT_BASE_TOPIC): str,
-                }
-            ),
+            data_schema=_schema(),
             errors=errors,
         )
 
+
+def _schema() -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_MAC): str,
+            vol.Optional(CONF_NAME, default=""): str,
+            vol.Required(CONF_TRANSPORT, default=TRANSPORT_UDP): vol.In(TRANSPORTS),
+            vol.Optional(CONF_HOST, default=""): str,
+            vol.Optional(CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT): cv.port,
+            vol.Optional(CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT): cv.port,
+            vol.Optional(CONF_MQTT_BASE_TOPIC, default=DEFAULT_MQTT_BASE_TOPIC): str,
+        }
+    )
+
+
+def _discovery_title(service_name: str, mac: str) -> str:
+    suffix = f".{ZM1_ZEROCONF_TYPE}"
+    if service_name.endswith(suffix):
+        return service_name.removesuffix(suffix)
+    return f"zM1 {mac[-4:].upper()}"

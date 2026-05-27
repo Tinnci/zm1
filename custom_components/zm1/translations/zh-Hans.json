@@ -8,16 +8,19 @@
           "mac": "MAC 地址",
           "name": "名称",
           "transport": "传输方式",
-          "host": "主机地址",
+          "host": "主机地址覆盖",
           "udp_command_port": "UDP 命令端口",
           "udp_response_port": "UDP 响应端口",
           "mqtt_base_topic": "MQTT 基础主题"
         }
+      },
+      "zeroconf_confirm": {
+        "title": "添加 zM1",
+        "description": "要设置已发现的 zM1 设备 {name} 吗？"
       }
     },
     "error": {
       "cannot_connect": "无法连接 zM1 设备",
-      "host_required": "UDP 传输方式必须填写主机地址",
       "invalid_mac": "MAC 必须是 12 位十六进制字符"
     },
     "abort": {
@@ -38,4 +41,3 @@
     }
   }
 }
-

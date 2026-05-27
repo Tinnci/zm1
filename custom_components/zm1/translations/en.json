@@ -8,16 +8,19 @@
           "mac": "MAC address",
           "name": "Name",
           "transport": "Transport",
-          "host": "Host",
+          "host": "Host override",
           "udp_command_port": "UDP command port",
           "udp_response_port": "UDP response port",
           "mqtt_base_topic": "MQTT base topic"
         }
+      },
+      "zeroconf_confirm": {
+        "title": "Add zM1",
+        "description": "Set up discovered zM1 device {name}?"
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to the zM1 device",
-      "host_required": "Host is required for UDP transport",
       "invalid_mac": "MAC must contain 12 hexadecimal characters"
     },
     "abort": {
