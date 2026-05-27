@@ -9,7 +9,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
@@ -22,11 +22,13 @@ from .const import (
     ATTR_OTA_URL,
     ATTR_PAYLOAD,
     CONF_MAC,
+    CONF_TRANSPORT,
     DOMAIN,
     PLATFORMS,
     SERVICE_CONFIGURE_MQTT,
     SERVICE_OTA_UPDATE,
     SERVICE_SEND_COMMAND,
+    TRANSPORT_UDP,
 )
 from .coordinator import ZM1Coordinator
 from .protocol import normalize_mac
@@ -45,7 +47,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ZM1ConfigEntry) -> bool:
     """Set up zM1 from a config entry."""
     coordinator = ZM1Coordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady:
+        if entry.data[CONF_TRANSPORT] != TRANSPORT_UDP:
+            raise
+        _LOGGER.warning(
+            "zM1 %s was discovered, but the first UDP state query timed out. "
+            "The device entry will be created and Home Assistant will keep retrying. "
+            "If it stays unavailable, ensure Home Assistant can receive UDP port 10181",
+            coordinator.device_name,
+        )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     entry.runtime_data = coordinator

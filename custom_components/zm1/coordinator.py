@@ -91,7 +91,11 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 client = await self._async_get_udp_client(force_discovery=True)
                 response = await client.query("brightness", "version", "name", "ota_progress")
             except ZM1Error as retry_err:
-                raise UpdateFailed("Timed out waiting for zM1 UDP response") from retry_err
+                raise UpdateFailed(
+                    "Timed out waiting for zM1 UDP response. mDNS/host discovery can "
+                    "succeed while state queries fail if Home Assistant cannot receive "
+                    f"UDP {self.response_port} from the zM1 device"
+                ) from retry_err
         except ZM1Error as err:
             raise UpdateFailed(str(err)) from err
         return self._merge_response(response)
