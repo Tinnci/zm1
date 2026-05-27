@@ -15,6 +15,7 @@ from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import (
     CONF_MAC,
+    CONF_LAST_HOST,
     CONF_MQTT_BASE_TOPIC,
     CONF_TRANSPORT,
     CONF_UDP_COMMAND_PORT,
@@ -65,6 +66,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_NAME: title,
             CONF_TRANSPORT: TRANSPORT_UDP,
             CONF_HOST: "",
+            CONF_LAST_HOST: str(discovery_info.ip_address),
             CONF_UDP_COMMAND_PORT: port,
             CONF_UDP_RESPONSE_PORT: DEFAULT_UDP_RESPONSE_PORT,
             CONF_MQTT_BASE_TOPIC: DEFAULT_MQTT_BASE_TOPIC,
@@ -147,6 +149,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not data.get(CONF_MQTT_BASE_TOPIC):
                     data[CONF_MQTT_BASE_TOPIC] = DEFAULT_MQTT_BASE_TOPIC
                 data.setdefault(CONF_ZEROCONF_NAME, "")
+                data.setdefault(CONF_LAST_HOST, "")
 
                 return self.async_create_entry(title=name, data=data)
 

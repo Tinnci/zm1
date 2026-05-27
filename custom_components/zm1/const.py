@@ -12,6 +12,7 @@ CONF_UDP_RESPONSE_PORT = "udp_response_port"
 CONF_MQTT_BASE_TOPIC = "mqtt_base_topic"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_ZEROCONF_NAME = "zeroconf_name"
+CONF_LAST_HOST = "last_host"
 
 TRANSPORT_UDP = "udp"
 TRANSPORT_MQTT = "mqtt"

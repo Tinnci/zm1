@@ -18,6 +18,7 @@ from zeroconf.asyncio import AsyncServiceInfo
 
 from .const import (
     CONF_MAC,
+    CONF_LAST_HOST,
     CONF_MQTT_BASE_TOPIC,
     CONF_SCAN_INTERVAL,
     CONF_TRANSPORT,
@@ -48,6 +49,7 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.mac = normalize_mac(entry.data[CONF_MAC])
         self.transport = entry.data[CONF_TRANSPORT]
         self.configured_host = str(entry.data.get(CONF_HOST) or "").strip()
+        self.last_host = str(entry.data.get(CONF_LAST_HOST) or "").strip()
         self.host = self.configured_host or None
         self.zeroconf_name = str(entry.data.get(CONF_ZEROCONF_NAME) or "").strip()
         self.command_port = entry.data.get(CONF_UDP_COMMAND_PORT, DEFAULT_UDP_COMMAND_PORT)
@@ -157,6 +159,29 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.host = host
                 self._udp_client = self._new_udp_client(host)
                 return self._udp_client
+
+        if self.last_host and not force_discovery:
+            self.host = self.last_host
+            self._udp_client = self._new_udp_client(self.last_host)
+            return self._udp_client
+
+        from .mdns import discover_mdns
+
+        mdns_info = await discover_mdns(self.mac, timeout=DEFAULT_TIMEOUT)
+        if mdns_info is not None:
+            self.command_port = mdns_info.port or self.command_port
+            self.host = mdns_info.host
+            self._udp_client = self._new_udp_client(mdns_info.host)
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={
+                    **self.entry.data,
+                    CONF_LAST_HOST: mdns_info.host,
+                    CONF_ZEROCONF_NAME: mdns_info.name,
+                    CONF_UDP_COMMAND_PORT: mdns_info.port or self.command_port,
+                },
+            )
+            return self._udp_client
 
         from .udp import discover, find_discovered_host
 

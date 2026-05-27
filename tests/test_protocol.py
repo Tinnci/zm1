@@ -94,11 +94,17 @@ class UDPClientTest(unittest.TestCase):
                 ready.set()
                 data, addr = sock.recvfrom(1024)
                 received.update(json.loads(data.decode()))
+                sensor = {
+                    "mac": received["mac"],
+                    "temperature": "26.5",
+                    "humidity": "58.8",
+                }
                 response = {
                     "mac": received["mac"],
                     "brightness": received["brightness"],
                     "name": "zM1_AD46",
                 }
+                sock.sendto(json.dumps(sensor).encode(), addr)
                 sock.sendto(json.dumps(response).encode(), addr)
             finally:
                 sock.close()

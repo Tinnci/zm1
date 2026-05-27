@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import time
 from typing import Any
 
 try:
@@ -43,12 +44,25 @@ class ZM1UDPClient:
     async def send(self, values: dict[str, Any]) -> dict[str, Any]:
         """Send a zM1 command and wait for the JSON response."""
         payload = build_command(self.mac, values)
-        return await asyncio.to_thread(self._send_sync, payload, self.host, self.command_port)
+        expected_fields = {field for field in values if field != "setting"}
+        return await asyncio.to_thread(
+            self._send_sync,
+            payload,
+            self.host,
+            self.command_port,
+            expected_fields,
+        )
 
     async def query(self, *fields: str) -> dict[str, Any]:
         """Query one or more zM1 fields."""
         payload = build_query(self.mac, *fields)
-        return await asyncio.to_thread(self._send_sync, payload, self.host, self.command_port)
+        return await asyncio.to_thread(
+            self._send_sync,
+            payload,
+            self.host,
+            self.command_port,
+            set(fields),
+        )
 
     async def configure_mqtt(
         self,
@@ -73,7 +87,13 @@ class ZM1UDPClient:
         """Start a device OTA update through UDP."""
         return await self.send({"setting": {"ota": ota_url}})
 
-    def _send_sync(self, payload: dict[str, Any], host: str, port: int) -> dict[str, Any]:
+    def _send_sync(
+        self,
+        payload: dict[str, Any],
+        host: str,
+        port: int,
+        expected_fields: set[str],
+    ) -> dict[str, Any]:
         data = encode_payload(payload)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -83,11 +103,21 @@ class ZM1UDPClient:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except OSError:
                     pass
+            deadline = time.monotonic() + self.timeout
             sock.settimeout(self.timeout)
             sock.bind((self.bind_host, self.response_port))
             sock.sendto(data, (host, port))
-            response, _addr = sock.recvfrom(1024)
-            return decode_payload(response)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise socket.timeout
+                sock.settimeout(remaining)
+                response, _addr = sock.recvfrom(1024)
+                payload = decode_payload(response)
+                if payload.get("mac") != self.mac:
+                    continue
+                if not expected_fields or expected_fields.intersection(payload):
+                    return payload
         except socket.timeout as err:
             raise ZM1TimeoutError("Timed out waiting for zM1 response") from err
         except OSError as err:

@@ -15,7 +15,9 @@ Minimum target version: Home Assistant `2026.2.0`. `hacs.json` declares this min
 - UDP direct control: discovers the device with mDNS service `_zcontrol._tcp.local.` first, falls back to the documented UDP broadcast command, sends JSON commands to device UDP port `10182`, and listens for replies on local UDP port `10181`.
 - MQTT control: publishes commands to `device/zm1/<mac>/set` and subscribes to `device/zm1/<mac>/state` plus `device/zm1/<mac>/sensor`.
 
-UDP mode does not require MQTT, Docker, add-ons, or any other service. zM1 advertises `_zcontrol._tcp.local.` over mDNS; Home Assistant can discover it automatically. The host field is optional and only acts as a manual override. If mDNS is unavailable, the integration falls back to broadcasting `{"cmd":"device report"}` and matching the returned MAC. MQTT mode is optional and requires Home Assistant's MQTT integration to be configured with a working MQTT broker, such as the official Mosquitto Broker add-on or an existing broker on your network.
+UDP mode does not require MQTT, Docker, add-ons, or any other service. zM1 advertises `_zcontrol._tcp.local.` over mDNS; Home Assistant can discover it automatically and stores the last resolved host as a fallback. The host field is optional and only acts as a manual override. If mDNS is unavailable, the integration falls back to broadcasting `{"cmd":"device report"}` and matching the returned MAC. MQTT mode is optional and requires Home Assistant's MQTT integration to be configured with a working MQTT broker, such as the official Mosquitto Broker add-on or an existing broker on your network.
+
+zM1 sends UDP replies and unsolicited sensor packets to local UDP port `10181`. Home Assistant OS and Supervised normally run on the host network. If you run Home Assistant Container with bridge networking, publish or host-network UDP `10181`, otherwise UDP setup can time out even when mDNS discovery works.
 
 The MAC must be lowercase without separators, for example `b0f89323ad46`. The config flow accepts `b0:f8:93:23:ad:46` and normalizes it.
 
