@@ -1,0 +1,10 @@
+[project]
+name = "ha-zm1"
+version = "0.1.0"
+description = "Home Assistant custom integration for zM1 UDP and MQTT control"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+

@@ -1,0 +1,66 @@
+send_command:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: zm1
+    mac:
+      required: false
+      selector:
+        text:
+    payload:
+      required: true
+      selector:
+        object:
+
+configure_mqtt:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: zm1
+    mac:
+      required: false
+      selector:
+        text:
+    mqtt_uri:
+      required: true
+      selector:
+        text:
+    mqtt_port:
+      required: false
+      default: 1883
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box
+    mqtt_user:
+      required: false
+      selector:
+        text:
+    mqtt_password:
+      required: false
+      selector:
+        text:
+          type: password
+
+ota_update:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: zm1
+    mac:
+      required: false
+      selector:
+        text:
+    ota_url:
+      required: true
+      selector:
+        text:
+          type: url
+

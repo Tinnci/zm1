@@ -1,0 +1,40 @@
+{
+  "title": "zM1",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add zM1",
+        "data": {
+          "mac": "MAC address",
+          "name": "Name",
+          "transport": "Transport",
+          "host": "Host",
+          "udp_command_port": "UDP command port",
+          "udp_response_port": "UDP response port",
+          "mqtt_base_topic": "MQTT base topic"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the zM1 device",
+      "host_required": "Host is required for UDP transport",
+      "invalid_mac": "MAC must contain 12 hexadecimal characters"
+    },
+    "abort": {
+      "already_configured": "This zM1 device is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "version": {
+        "name": "Version"
+      },
+      "ota_progress": {
+        "name": "OTA progress"
+      },
+      "last_seen": {
+        "name": "Last seen"
+      }
+    }
+  }
+}
