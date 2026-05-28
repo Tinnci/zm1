@@ -17,6 +17,19 @@
       "zeroconf_confirm": {
         "title": "添加 zM1",
         "description": "要设置已发现的 zM1 设备 {name} 吗？"
+      },
+      "reconfigure": {
+        "title": "重新配置 zM1",
+        "data": {
+          "transport": "传输方式",
+          "host": "主机地址覆盖",
+          "udp_command_port": "UDP 命令端口",
+          "udp_response_port": "UDP 响应端口",
+          "mqtt_base_topic": "MQTT 基础主题"
+        },
+        "data_description": {
+          "host": "留空时使用 mDNS 或 UDP 发现。"
+        }
       }
     },
     "error": {
@@ -25,6 +38,19 @@
     },
     "abort": {
       "already_configured": "这个 zM1 设备已经配置"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "zM1 选项",
+        "data": {
+          "scan_interval": "轮询间隔"
+        },
+        "data_description": {
+          "scan_interval": "状态轮询间隔，单位为秒。可填 5-3600。"
+        }
+      }
     }
   },
   "entity": {

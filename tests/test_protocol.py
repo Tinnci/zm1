@@ -5,6 +5,7 @@ import json
 import socket
 import sys
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -130,6 +131,35 @@ class UDPClientTest(unittest.TestCase):
         self.assertEqual(response["name"], "zM1_AD46")
         self.assertEqual(client.last_sensor_report["temperature"], "26.5")
         self.assertEqual(client.last_sensor_report["humidity"], "58.8")
+
+    def test_sensor_report_read_uses_caller_timeout(self) -> None:
+        response_port = free_udp_port()
+        client = ZM1UDPClient(
+            "127.0.0.1",
+            "b0f89323ad46",
+            response_port=response_port,
+            bind_host="127.0.0.1",
+        )
+
+        start = time.monotonic()
+        response = asyncio.run(client.read_sensor_report(timeout=0.05))
+        elapsed = time.monotonic() - start
+
+        self.assertEqual(response, {})
+        self.assertLess(elapsed, 0.5)
+
+
+class MetadataTest(unittest.TestCase):
+    def test_translations_include_options_flow(self) -> None:
+        for translation in ("en", "zh-Hans"):
+            path = ROOT / "custom_components" / "zm1" / "translations" / f"{translation}.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            option_fields = data["options"]["step"]["init"]["data"]
+            reconfigure_fields = data["config"]["step"]["reconfigure"]["data"]
+
+            self.assertIn("scan_interval", option_fields)
+            self.assertIn("transport", reconfigure_fields)
+            self.assertIn("host", reconfigure_fields)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ from .const import (
     CONF_ZEROCONF_NAME,
     DEFAULT_MQTT_BASE_TOPIC,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SENSOR_REPORT_TIMEOUT,
     DEFAULT_TIMEOUT,
     DEFAULT_UDP_COMMAND_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
@@ -48,12 +49,13 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry = entry
         self.mac = normalize_mac(entry.data[CONF_MAC])
         self.transport = entry.data[CONF_TRANSPORT]
-        self.configured_host = str(entry.data.get(CONF_HOST) or "").strip()
+        self.configured_host = str(entry.data.get(CONF_HOST, "") or "").strip()
         self.last_host = str(entry.data.get(CONF_LAST_HOST) or "").strip()
         self.host = self.configured_host or None
         self.zeroconf_name = str(entry.data.get(CONF_ZEROCONF_NAME) or "").strip()
         self.command_port = entry.data.get(CONF_UDP_COMMAND_PORT, DEFAULT_UDP_COMMAND_PORT)
         self.response_port = entry.data.get(CONF_UDP_RESPONSE_PORT, DEFAULT_UDP_RESPONSE_PORT)
+        self.mqtt_base_topic = entry.data.get(CONF_MQTT_BASE_TOPIC, DEFAULT_MQTT_BASE_TOPIC)
         self.device_name = entry.data.get(CONF_NAME) or f"zM1 {self.mac[-4:].upper()}"
         self._mqtt_unsubs: list[CALLBACK_TYPE] = []
         self._udp_client: ZM1UDPClient | None = None
@@ -90,7 +92,9 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             if client.last_sensor_report:
                 data = self._merge_response(client.last_sensor_report, base=data)
             try:
-                sensor_report = await client.read_sensor_report()
+                sensor_report = await client.read_sensor_report(
+                    timeout=DEFAULT_SENSOR_REPORT_TIMEOUT
+                )
             except ZM1Error as err:
                 _LOGGER.debug("Unable to read zM1 sensor report: %s", err)
             else:
@@ -190,15 +194,17 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.command_port = mdns_info.port or self.command_port
             self.host = mdns_info.host
             self._udp_client = self._new_udp_client(mdns_info.host)
-            self.hass.config_entries.async_update_entry(
-                self.entry,
-                data={
-                    **self.entry.data,
-                    CONF_LAST_HOST: mdns_info.host,
-                    CONF_ZEROCONF_NAME: mdns_info.name,
-                    CONF_UDP_COMMAND_PORT: mdns_info.port or self.command_port,
-                },
-            )
+            updated_data = {
+                **self.entry.data,
+                CONF_LAST_HOST: mdns_info.host,
+                CONF_ZEROCONF_NAME: mdns_info.name,
+                CONF_UDP_COMMAND_PORT: mdns_info.port or self.command_port,
+            }
+            if updated_data != self.entry.data:
+                self.hass.config_entries.async_update_entry(
+                    self.entry,
+                    data=updated_data,
+                )
             return self._udp_client
 
         from .udp import discover, find_discovered_host
@@ -233,7 +239,7 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         topics = build_mqtt_topics(
             self.mac,
-            self.entry.data.get(CONF_MQTT_BASE_TOPIC, DEFAULT_MQTT_BASE_TOPIC),
+            self.mqtt_base_topic,
         )
         payload = encode_payload({"mac": self.mac, **values}).decode()
         result = mqtt.async_publish(self.hass, topics.command, payload, qos=0, retain=False)
@@ -247,7 +253,7 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         topics = build_mqtt_topics(
             self.mac,
-            self.entry.data.get(CONF_MQTT_BASE_TOPIC, DEFAULT_MQTT_BASE_TOPIC),
+            self.mqtt_base_topic,
         )
 
         @callback

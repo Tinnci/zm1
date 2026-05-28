@@ -17,6 +17,19 @@
       "zeroconf_confirm": {
         "title": "Add zM1",
         "description": "Set up discovered zM1 device {name}?"
+      },
+      "reconfigure": {
+        "title": "Reconfigure zM1",
+        "data": {
+          "transport": "Transport",
+          "host": "Host override",
+          "udp_command_port": "UDP command port",
+          "udp_response_port": "UDP response port",
+          "mqtt_base_topic": "MQTT base topic"
+        },
+        "data_description": {
+          "host": "Leave empty to use mDNS or UDP discovery."
+        }
       }
     },
     "error": {
@@ -25,6 +38,19 @@
     },
     "abort": {
       "already_configured": "This zM1 device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "zM1 options",
+        "data": {
+          "scan_interval": "Scan interval"
+        },
+        "data_description": {
+          "scan_interval": "Polling interval in seconds. Use 5-3600."
+        }
+      }
     }
   },
   "entity": {

@@ -35,7 +35,7 @@ from .protocol import normalize_mac
 
 _LOGGER = logging.getLogger(__name__)
 
-type ZM1ConfigEntry = ConfigEntry[ZM1Coordinator]
+ZM1ConfigEntry = ConfigEntry[ZM1Coordinator]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -50,17 +50,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ZM1ConfigEntry) -> bool:
     try:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryNotReady:
-        if entry.data[CONF_TRANSPORT] != TRANSPORT_UDP:
+        if coordinator.transport != TRANSPORT_UDP:
             raise
         _LOGGER.warning(
             "zM1 %s was discovered, but the first UDP state query timed out. "
-            "The device entry will be created and Home Assistant will keep retrying. "
+            "The device entry will be created and regular polling will retry. "
             "If it stays unavailable, ensure Home Assistant can receive UDP port 10181",
             coordinator.device_name,
         )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     entry.runtime_data = coordinator
+    entry.async_on_unload(entry.add_update_listener(_async_update_options))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -74,6 +75,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ZM1ConfigEntry) -> bool
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
     return unload_ok
+
+
+async def _async_update_options(hass: HomeAssistant, entry: ZM1ConfigEntry) -> None:
+    """Reload zM1 when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _async_setup_services(hass: HomeAssistant) -> None:

@@ -23,6 +23,18 @@ Sensor packets currently observed from zM1 include temperature, humidity, formal
 
 The MAC must be lowercase without separators, for example `b0f89323ad46`. The config flow accepts `b0:f8:93:23:ad:46` and normalizes it.
 
+## Reconfigure and options
+
+After a device is added, use **Reconfigure** to change connection settings:
+
+- transport (`udp` or `mqtt`)
+- host override
+- UDP command and response ports
+- MQTT base topic
+
+Use **Options** to change the polling interval in seconds. Changing either
+connection settings or options reloads the integration entry automatically.
+
 ## Services
 
 - `zm1.send_command`: send any JSON payload supported by zM1.

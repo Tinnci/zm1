@@ -17,15 +17,16 @@ from .const import (
     CONF_MAC,
     CONF_LAST_HOST,
     CONF_MQTT_BASE_TOPIC,
+    CONF_SCAN_INTERVAL,
     CONF_TRANSPORT,
     CONF_UDP_COMMAND_PORT,
     CONF_UDP_RESPONSE_PORT,
     CONF_ZEROCONF_NAME,
     DEFAULT_MQTT_BASE_TOPIC,
+    DEFAULT_SCAN_INTERVAL,
     DEFAULT_UDP_COMMAND_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
     DOMAIN,
-    TRANSPORT_MQTT,
     TRANSPORT_UDP,
     TRANSPORTS,
     ZM1_ZEROCONF_TYPE,
@@ -45,6 +46,13 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovered_data: dict[str, Any] = {}
         self._discovered_title = ""
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Create the options flow."""
+        return ZM1OptionsFlow(config_entry)
 
     async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo) -> FlowResult:
         """Handle zM1 mDNS discovery."""
@@ -124,7 +132,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "cannot_connect"
                     return self.async_show_form(
                         step_id="user",
-                        data_schema=_schema(),
+                        data_schema=_config_schema(),
                         errors=errors,
                     )
 
@@ -155,12 +163,93 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=_schema(),
+            data_schema=_config_schema(),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle reconfiguration of connection settings."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            data = {
+                **entry.data,
+                **user_input,
+                CONF_MAC: entry.data[CONF_MAC],
+                CONF_NAME: entry.data.get(CONF_NAME, entry.title),
+            }
+            data[CONF_HOST] = str(data.get(CONF_HOST) or "").strip()
+            if not data.get(CONF_MQTT_BASE_TOPIC):
+                data[CONF_MQTT_BASE_TOPIC] = DEFAULT_MQTT_BASE_TOPIC
+
+            if data[CONF_TRANSPORT] == TRANSPORT_UDP:
+                validation_host = data[CONF_HOST]
+                if not validation_host:
+                    responses = await discover(
+                        command_port=data[CONF_UDP_COMMAND_PORT],
+                        response_port=data[CONF_UDP_RESPONSE_PORT],
+                    )
+                    validation_host = find_discovered_host(responses, data[CONF_MAC]) or ""
+
+                if not validation_host:
+                    errors["base"] = "cannot_connect"
+                else:
+                    client = ZM1UDPClient(
+                        validation_host,
+                        data[CONF_MAC],
+                        command_port=data[CONF_UDP_COMMAND_PORT],
+                        response_port=data[CONF_UDP_RESPONSE_PORT],
+                    )
+                    try:
+                        await client.query("version", "name", "brightness")
+                    except ZM1Error as err:
+                        _LOGGER.debug("Unable to validate zM1 UDP device", exc_info=err)
+                        errors["base"] = "cannot_connect"
+
+            if not errors:
+                await self.async_set_unique_id(entry.unique_id or data[CONF_MAC])
+                self._abort_if_unique_id_mismatch()
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={
+                        CONF_TRANSPORT: data[CONF_TRANSPORT],
+                        CONF_HOST: data[CONF_HOST],
+                        CONF_UDP_COMMAND_PORT: data[CONF_UDP_COMMAND_PORT],
+                        CONF_UDP_RESPONSE_PORT: data[CONF_UDP_RESPONSE_PORT],
+                        CONF_MQTT_BASE_TOPIC: data[CONF_MQTT_BASE_TOPIC],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=_reconfigure_schema(entry),
             errors=errors,
         )
 
 
-def _schema() -> vol.Schema:
+class ZM1OptionsFlow(config_entries.OptionsFlow):
+    """Handle zM1 options."""
+
+    def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        self.entry = entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage zM1 options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=dict(user_input))
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_options_schema(self.entry),
+        )
+
+
+def _config_schema() -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(CONF_MAC): str,
@@ -170,6 +259,43 @@ def _schema() -> vol.Schema:
             vol.Optional(CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT): cv.port,
             vol.Optional(CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT): cv.port,
             vol.Optional(CONF_MQTT_BASE_TOPIC, default=DEFAULT_MQTT_BASE_TOPIC): str,
+        }
+    )
+
+
+def _options_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
+    options = entry.options
+    return vol.Schema(
+        {
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            ): vol.All(cv.positive_int, vol.Range(min=5, max=3600)),
+        }
+    )
+
+
+def _reconfigure_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
+    data = entry.data
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_TRANSPORT,
+                default=data.get(CONF_TRANSPORT, TRANSPORT_UDP),
+            ): vol.In(TRANSPORTS),
+            vol.Optional(CONF_HOST, default=data.get(CONF_HOST, "")): str,
+            vol.Optional(
+                CONF_UDP_COMMAND_PORT,
+                default=data.get(CONF_UDP_COMMAND_PORT, DEFAULT_UDP_COMMAND_PORT),
+            ): cv.port,
+            vol.Optional(
+                CONF_UDP_RESPONSE_PORT,
+                default=data.get(CONF_UDP_RESPONSE_PORT, DEFAULT_UDP_RESPONSE_PORT),
+            ): cv.port,
+            vol.Optional(
+                CONF_MQTT_BASE_TOPIC,
+                default=data.get(CONF_MQTT_BASE_TOPIC, DEFAULT_MQTT_BASE_TOPIC),
+            ): str,
         }
     )
 
