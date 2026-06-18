@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.1.4"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release asset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: pyproject.toml
+
+      - name: Validate metadata
+        run: |
+          uv run python - <<'PY'
+          import json
+          import os
+          import sys
+          import tomllib
+
+          event_tag = os.environ.get("GITHUB_REF_NAME", "")
+          input_tag = "${{ inputs.tag }}"
+          tag = input_tag or event_tag
+          if not tag.startswith("v"):
+              raise SystemExit(f"Release tag must start with v: {tag}")
+
+          manifest = json.load(open("custom_components/zm1/manifest.json"))
+          project = tomllib.load(open("pyproject.toml", "rb"))["project"]
+          expected = tag.removeprefix("v")
+          versions = {
+              "manifest": manifest["version"],
+              "pyproject": project["version"],
+          }
+          mismatches = {name: version for name, version in versions.items() if version != expected}
+          if mismatches:
+              raise SystemExit(f"Version mismatch for {tag}: {mismatches}")
+          PY
+
+      - name: Run unit tests
+        run: uv run python -m unittest discover -s tests
+
+      - name: Build HACS zip
+        run: |
+          mkdir -p release
+          zip -r release/zm1.zip custom_components/zm1 hacs.json README.md \
+            -x "*/__pycache__/*" "*.pyc"
+          sha256sum release/zm1.zip > release/zm1.zip.sha256
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          fail_on_unmatched_files: true
+          files: |
+            release/zm1.zip
+            release/zm1.zip.sha256

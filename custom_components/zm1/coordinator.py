@@ -37,6 +37,13 @@ from .const import (
     ZM1_ZEROCONF_TYPE,
 )
 from .protocol import build_mqtt_topics, decode_payload, encode_payload, normalize_mac
+from .repairs import (
+    ISSUE_MQTT_NOT_READY,
+    ISSUE_UDP_RESPONSE_UNAVAILABLE,
+    async_create_mqtt_not_ready_issue,
+    async_create_udp_response_issue,
+    async_delete_issue,
+)
 from .udp import ZM1Error, ZM1TimeoutError, ZM1UDPClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -100,12 +107,19 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 if sensor_report:
                     data = self._merge_response(sensor_report, base=data)
+            async_delete_issue(self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id)
             return data
         except ZM1TimeoutError as err:
             try:
                 client = await self._async_get_udp_client(force_discovery=True)
                 response = await client.query("brightness", "version", "name", "ota_progress")
             except ZM1Error as retry_err:
+                async_create_udp_response_issue(
+                    self.hass,
+                    entry_id=self.entry.entry_id,
+                    device_name=self.device_name,
+                    response_port=self.response_port,
+                )
                 raise UpdateFailed(
                     "Timed out waiting for zM1 UDP response. mDNS/host discovery can "
                     "succeed while state queries fail if Home Assistant cannot receive "
@@ -116,6 +130,7 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = self._merge_response(response)
         if client.last_sensor_report:
             data = self._merge_response(client.last_sensor_report, base=data)
+        async_delete_issue(self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id)
         return data
 
     async def async_send_command(self, values: dict[str, Any]) -> dict[str, Any] | None:
@@ -249,13 +264,6 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_subscribe_mqtt(self) -> None:
         from homeassistant.components import mqtt
 
-        await mqtt.async_wait_for_mqtt_client(self.hass)
-
-        topics = build_mqtt_topics(
-            self.mac,
-            self.mqtt_base_topic,
-        )
-
         @callback
         def handle_message(msg: Any) -> None:
             try:
@@ -268,12 +276,24 @@ class ZM1Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.async_set_updated_data(self._merge_response(payload))
 
         try:
+            await mqtt.async_wait_for_mqtt_client(self.hass)
+            topics = build_mqtt_topics(
+                self.mac,
+                self.mqtt_base_topic,
+            )
             for topic in (topics.state, topics.sensor):
                 result = mqtt.async_subscribe(self.hass, topic, handle_message, qos=0)
                 unsub = await result if inspect.isawaitable(result) else result
                 self._mqtt_unsubs.append(unsub)
         except Exception as err:
+            async_create_mqtt_not_ready_issue(
+                self.hass,
+                entry_id=self.entry.entry_id,
+                device_name=self.device_name,
+            )
             raise ConfigEntryNotReady("MQTT is not ready") from err
+
+        async_delete_issue(self.hass, ISSUE_MQTT_NOT_READY, self.entry.entry_id)
 
     def _merge_response(
         self,

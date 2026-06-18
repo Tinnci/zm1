@@ -32,6 +32,7 @@ from .const import (
 )
 from .coordinator import ZM1Coordinator
 from .protocol import normalize_mac
+from .repairs import async_create_udp_response_issue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +58,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ZM1ConfigEntry) -> bool:
             "The device entry will be created and regular polling will retry. "
             "If it stays unavailable, ensure Home Assistant can receive UDP port 10181",
             coordinator.device_name,
+        )
+        async_create_udp_response_issue(
+            hass,
+            entry_id=entry.entry_id,
+            device_name=coordinator.device_name,
+            response_port=coordinator.response_port,
         )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

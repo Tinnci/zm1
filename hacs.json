@@ -1,5 +1,7 @@
 {
   "name": "zM1",
   "homeassistant": "2026.2.0",
+  "filename": "zm1.zip",
+  "zip_release": true,
   "render_readme": true
 }

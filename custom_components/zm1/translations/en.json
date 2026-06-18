@@ -53,6 +53,16 @@
       }
     }
   },
+  "issues": {
+    "udp_response_unavailable": {
+      "title": "zM1 UDP responses are blocked",
+      "description": "Home Assistant can discover {device_name}, but it is not receiving zM1 UDP responses on port {response_port}. Allow UDP {response_port} to the Home Assistant host, then reload the zM1 integration."
+    },
+    "mqtt_not_ready": {
+      "title": "MQTT is not ready for zM1",
+      "description": "{device_name} is configured to use MQTT, but Home Assistant does not have a ready MQTT client. Configure the Home Assistant MQTT integration with a working broker, then reload the zM1 integration."
+    }
+  },
   "entity": {
     "sensor": {
       "temperature": {

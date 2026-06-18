@@ -9,6 +9,7 @@ from typing import Any
 
 DEFAULT_MQTT_BASE_TOPIC = "device/zm1"
 MAX_PACKET_BYTES = 1023
+MAX_ZM1_BRIGHTNESS = 4
 _MAC_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
@@ -98,3 +99,29 @@ def build_mqtt_topics(mac: str, base_topic: str = DEFAULT_MQTT_BASE_TOPIC) -> ZM
         sensor=f"{root}/sensor",
     )
 
+
+def clamp_zm1_brightness(value: Any) -> int:
+    """Clamp a zM1 brightness value to the supported device range."""
+    try:
+        return max(0, min(MAX_ZM1_BRIGHTNESS, int(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def zm1_brightness_to_ha(value: Any) -> int:
+    """Convert zM1 brightness to Home Assistant's 0-255 scale."""
+    raw = clamp_zm1_brightness(value)
+    if raw <= 0:
+        return 0
+    return round(raw / MAX_ZM1_BRIGHTNESS * 255)
+
+
+def ha_brightness_to_zm1(value: Any, *, fallback: int = MAX_ZM1_BRIGHTNESS) -> int:
+    """Convert Home Assistant's 0-255 brightness to a zM1 brightness level."""
+    if value is None:
+        return max(1, min(MAX_ZM1_BRIGHTNESS, fallback))
+    try:
+        ha_value = int(value)
+    except (TypeError, ValueError):
+        return max(1, min(MAX_ZM1_BRIGHTNESS, fallback))
+    return max(1, min(MAX_ZM1_BRIGHTNESS, round(ha_value / 255 * MAX_ZM1_BRIGHTNESS)))

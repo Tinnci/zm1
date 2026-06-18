@@ -19,6 +19,8 @@ UDP mode does not require MQTT, Docker, add-ons, or any other service. zM1 adver
 
 zM1 sends UDP replies and unsolicited sensor packets to local UDP port `10181`. Home Assistant OS and Supervised normally run on the host network. If you run Home Assistant Container with bridge networking, publish or host-network UDP `10181`, otherwise state queries can time out even when mDNS discovery works. In that case the integration still creates the device entry and keeps retrying.
 
+When Home Assistant cannot receive zM1 UDP replies, the integration creates a Repair issue with the affected device name and response port. When MQTT mode is selected but Home Assistant's MQTT client is not ready, the integration creates a Repair issue that points to the missing MQTT broker/client setup. These issues are cleared automatically after the integration recovers.
+
 Sensor packets currently observed from zM1 include temperature, humidity, formaldehyde, and PM2.5. The integration also exposes reserved TVOC, CO2, and eCO2 sensors so newer firmware fields appear automatically when reported.
 
 The MAC must be lowercase without separators, for example `b0f89323ad46`. The config flow accepts `b0:f8:93:23:ad:46` and normalizes it.
@@ -75,3 +77,11 @@ Run the local protocol checks with:
 ```powershell
 uv run python -m unittest discover -s tests
 ```
+
+## Release
+
+CI runs protocol tests with `uv`, plus Home Assistant `hassfest` and HACS validation. To publish a HACS zip release:
+
+1. Update `custom_components/zm1/manifest.json` and `pyproject.toml` to the same semantic version.
+2. Tag the commit as `vX.Y.Z`.
+3. Push the tag. GitHub Actions builds `zm1.zip`, verifies the tag matches the manifest version, and attaches the zip plus a SHA256 file to the release.

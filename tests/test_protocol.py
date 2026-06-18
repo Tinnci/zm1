@@ -18,9 +18,12 @@ from protocol import (  # noqa: E402
     build_discovery_command,
     build_mqtt_topics,
     build_query,
+    clamp_zm1_brightness,
     decode_payload,
     encode_payload,
+    ha_brightness_to_zm1,
     normalize_mac,
+    zm1_brightness_to_ha,
 )
 from udp import ZM1UDPClient  # noqa: E402
 from udp import find_discovered_host  # noqa: E402
@@ -72,6 +75,14 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(topics.command, "device/zm1/b0f89323ad46/set")
         self.assertEqual(topics.state, "device/zm1/b0f89323ad46/state")
         self.assertEqual(topics.sensor, "device/zm1/b0f89323ad46/sensor")
+
+    def test_brightness_maps_full_zm1_range_to_home_assistant(self) -> None:
+        self.assertEqual(clamp_zm1_brightness("5"), 4)
+        self.assertEqual(zm1_brightness_to_ha(0), 0)
+        self.assertEqual(zm1_brightness_to_ha(4), 255)
+        self.assertEqual(ha_brightness_to_zm1(1), 1)
+        self.assertEqual(ha_brightness_to_zm1(128), 2)
+        self.assertEqual(ha_brightness_to_zm1(255), 4)
 
     def test_discovered_host_matches_mac(self) -> None:
         responses = [
@@ -156,10 +167,13 @@ class MetadataTest(unittest.TestCase):
             data = json.loads(path.read_text(encoding="utf-8"))
             option_fields = data["options"]["step"]["init"]["data"]
             reconfigure_fields = data["config"]["step"]["reconfigure"]["data"]
+            issues = data["issues"]
 
             self.assertIn("scan_interval", option_fields)
             self.assertIn("transport", reconfigure_fields)
             self.assertIn("host", reconfigure_fields)
+            self.assertIn("udp_response_unavailable", issues)
+            self.assertIn("mqtt_not_ready", issues)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,16 @@
       }
     }
   },
+  "issues": {
+    "udp_response_unavailable": {
+      "title": "zM1 UDP 响应被阻止",
+      "description": "Home Assistant 可以发现 {device_name}，但没有收到 zM1 发往 {response_port} 端口的 UDP 响应。请在 Home Assistant 主机防火墙放行 UDP {response_port}，然后重新加载 zM1 集成。"
+    },
+    "mqtt_not_ready": {
+      "title": "zM1 的 MQTT 尚未就绪",
+      "description": "{device_name} 已配置为使用 MQTT，但 Home Assistant 没有可用的 MQTT 客户端。请先配置 Home Assistant 的 MQTT 集成和可用 broker，然后重新加载 zM1 集成。"
+    }
+  },
   "entity": {
     "sensor": {
       "temperature": {

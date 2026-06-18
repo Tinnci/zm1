@@ -98,7 +98,7 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda data: data.get("ota_progress"),
+        value_fn=lambda data: _numeric(data, "ota_progress"),
     ),
     ZM1SensorEntityDescription(
         key="last_seen",

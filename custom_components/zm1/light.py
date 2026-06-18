@@ -11,8 +11,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import ZM1Coordinator
 from .entity import ZM1Entity
-
-MAX_ZM1_BRIGHTNESS = 3
+from .protocol import (
+    MAX_ZM1_BRIGHTNESS,
+    clamp_zm1_brightness,
+    ha_brightness_to_zm1,
+    zm1_brightness_to_ha,
+)
 
 
 async def async_setup_entry(
@@ -41,17 +45,14 @@ class ZM1Light(ZM1Entity, LightEntity):
 
     @property
     def brightness(self) -> int | None:
-        raw = self._raw_brightness
-        if raw <= 0:
-            return 0
-        return round(raw / MAX_ZM1_BRIGHTNESS * 255)
+        return zm1_brightness_to_ha(self._raw_brightness)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         brightness = kwargs.get("brightness")
-        if brightness is None:
-            raw = self._raw_brightness or MAX_ZM1_BRIGHTNESS
-        else:
-            raw = max(1, min(MAX_ZM1_BRIGHTNESS, round(brightness / 255 * MAX_ZM1_BRIGHTNESS)))
+        raw = ha_brightness_to_zm1(
+            brightness,
+            fallback=self._raw_brightness or MAX_ZM1_BRIGHTNESS,
+        )
         await self.coordinator.async_send_command({"brightness": raw})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -60,8 +61,4 @@ class ZM1Light(ZM1Entity, LightEntity):
     @property
     def _raw_brightness(self) -> int:
         value = (self.coordinator.data or {}).get("brightness", 0)
-        try:
-            return max(0, min(MAX_ZM1_BRIGHTNESS, int(value)))
-        except (TypeError, ValueError):
-            return 0
-
+        return clamp_zm1_brightness(value)
