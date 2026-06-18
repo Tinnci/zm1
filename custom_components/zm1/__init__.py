@@ -37,6 +37,7 @@ from .repairs import async_create_udp_response_issue
 _LOGGER = logging.getLogger(__name__)
 
 ZM1ConfigEntry = ConfigEntry[ZM1Coordinator]
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

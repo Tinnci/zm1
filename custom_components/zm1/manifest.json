@@ -1,14 +1,15 @@
 {
   "domain": "zm1",
   "name": "zM1",
+  "after_dependencies": ["mqtt"],
   "codeowners": [],
   "config_flow": true,
   "dependencies": ["zeroconf"],
   "documentation": "https://github.com/Tinnci/zm1",
   "integration_type": "device",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Tinnci/zm1/issues",
   "version": "0.1.4",
-  "after_dependencies": ["mqtt"],
   "zeroconf": [
     {
       "type": "_zcontrol._tcp.local.",
