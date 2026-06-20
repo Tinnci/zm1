@@ -19,7 +19,7 @@ UDP mode does not require MQTT, Docker, add-ons, or any other service. zM1 adver
 
 zM1 sends UDP replies and unsolicited sensor packets to local UDP port `10181`. Home Assistant OS and Supervised normally run on the host network. If you run Home Assistant Container with bridge networking, publish or host-network UDP `10181`, otherwise state queries can time out even when mDNS discovery works. In that case the integration still creates the device entry and keeps retrying.
 
-UDP requests are serialized per device because commands, state queries, and sensor report reads share the same local response port. UDP polling also adapts to reliability: the configured polling interval is clamped to at least 15 seconds, repeated failures back off up to 300 seconds, and stable successful updates restore the configured interval.
+UDP requests are serialized per device because commands, state queries, and sensor report reads share the same local response port. UDP polling also adapts to reliability: the configured polling interval is clamped to 15-3600 seconds, repeated failures back off within that range, and stable successful updates restore the configured interval.
 
 When Home Assistant cannot receive zM1 UDP replies, the integration creates a Repair issue with the affected device name and response port. When MQTT mode is selected but Home Assistant's MQTT client is not ready, the integration creates a Repair issue that points to the missing MQTT broker/client setup. These issues are cleared automatically after the integration recovers.
 

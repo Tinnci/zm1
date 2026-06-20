@@ -1,6 +1,6 @@
 [project]
 name = "ha-zm1"
-version = "0.2.0"
+version = "0.2.1"
 description = "Home Assistant custom integration for zM1 UDP and MQTT control"
 requires-python = ">=3.12"
 dependencies = []

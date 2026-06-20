@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_UDP_COMMAND_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
     DOMAIN,
+    MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
     TRANSPORT_UDP,
     TRANSPORTS,
@@ -286,12 +287,18 @@ def _config_schema() -> vol.Schema:
 
 def _options_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
     options = entry.options
+    scan_interval = max(
+        MIN_SCAN_INTERVAL,
+        min(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL), MAX_SCAN_INTERVAL),
+    )
     return vol.Schema(
         {
             vol.Optional(
                 CONF_SCAN_INTERVAL,
-                default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-            ): vol.All(cv.positive_int, vol.Range(min=MIN_SCAN_INTERVAL, max=3600)),
+                default=scan_interval,
+            ): vol.All(
+                cv.positive_int, vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+            ),
         }
     )
 
