@@ -25,6 +25,7 @@ from protocol import (  # noqa: E402
     normalize_mac,
     zm1_brightness_to_ha,
 )
+from polling import AdaptivePollingPolicy  # noqa: E402
 from udp import ZM1UDPClient  # noqa: E402
 from udp import find_discovered_host  # noqa: E402
 
@@ -54,14 +55,21 @@ class ProtocolTest(unittest.TestCase):
     def test_query_uses_json_null(self) -> None:
         query = build_query("b0f89323ad46", "version")
         self.assertEqual(query, {"mac": "b0f89323ad46", "version": None})
-        self.assertEqual(json.loads(encode_payload(query)), {"mac": "b0f89323ad46", "version": None})
+        self.assertEqual(
+            json.loads(encode_payload(query)), {"mac": "b0f89323ad46", "version": None}
+        )
 
     def test_discovery_command_has_no_mac(self) -> None:
         self.assertEqual(build_discovery_command(), {"cmd": "device report"})
-        self.assertEqual(json.loads(encode_payload(build_discovery_command())), {"cmd": "device report"})
+        self.assertEqual(
+            json.loads(encode_payload(build_discovery_command())),
+            {"cmd": "device report"},
+        )
 
     def test_response_decodes_json_object(self) -> None:
-        response = decode_payload(b'{"mac":"B0:F8:93:23:AD:46","brightness":3,"name":"zM1_AD46"}')
+        response = decode_payload(
+            b'{"mac":"B0:F8:93:23:AD:46","brightness":3,"name":"zM1_AD46"}'
+        )
         self.assertEqual(response["mac"], "b0f89323ad46")
         self.assertEqual(response["brightness"], 3)
         self.assertEqual(response["name"], "zM1_AD46")
@@ -89,11 +97,15 @@ class ProtocolTest(unittest.TestCase):
             {"mac": "001122334455", "_addr": "192.168.3.10"},
             {"mac": "b0f89323ad46", "_addr": "192.168.3.181"},
         ]
-        self.assertEqual(find_discovered_host(responses, "B0:F8:93:23:AD:46"), "192.168.3.181")
+        self.assertEqual(
+            find_discovered_host(responses, "B0:F8:93:23:AD:46"), "192.168.3.181"
+        )
 
 
 class UDPClientTest(unittest.TestCase):
-    def test_udp_client_sends_json_to_command_port_and_waits_on_response_port(self) -> None:
+    def test_udp_client_sends_json_to_command_port_and_waits_on_response_port(
+        self,
+    ) -> None:
         command_port = free_udp_port()
         response_port = free_udp_port()
         received: dict[str, object] = {}
@@ -159,11 +171,118 @@ class UDPClientTest(unittest.TestCase):
         self.assertEqual(response, {})
         self.assertLess(elapsed, 0.5)
 
+    def test_udp_client_serializes_requests_on_shared_response_port(self) -> None:
+        command_port = free_udp_port()
+        response_port = free_udp_port()
+        first_received = threading.Event()
+        server_result: dict[str, object] = {}
+
+        def fake_zm1() -> None:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.bind(("127.0.0.1", command_port))
+                first_data, first_addr = sock.recvfrom(1024)
+                first_payload = json.loads(first_data.decode())
+                first_received.set()
+
+                sock.settimeout(0.2)
+                try:
+                    sock.recvfrom(1024)
+                except socket.timeout:
+                    server_result["second_arrived_before_first_response"] = False
+                else:
+                    server_result["second_arrived_before_first_response"] = True
+
+                sock.sendto(
+                    json.dumps(
+                        {
+                            "mac": first_payload["mac"],
+                            "brightness": 2,
+                            "version": "1.0",
+                        }
+                    ).encode(),
+                    first_addr,
+                )
+
+                second_data, second_addr = sock.recvfrom(1024)
+                second_payload = json.loads(second_data.decode())
+                sock.sendto(
+                    json.dumps(
+                        {
+                            "mac": second_payload["mac"],
+                            "brightness": second_payload["brightness"],
+                        }
+                    ).encode(),
+                    second_addr,
+                )
+            finally:
+                sock.close()
+
+        async def run_concurrent_requests() -> tuple[
+            dict[str, object], dict[str, object]
+        ]:
+            client = ZM1UDPClient(
+                "127.0.0.1",
+                "b0f89323ad46",
+                command_port=command_port,
+                response_port=response_port,
+                timeout=2.0,
+                bind_host="127.0.0.1",
+            )
+            query_task = asyncio.create_task(client.query("brightness", "version"))
+            await asyncio.to_thread(first_received.wait, 2)
+            send_task = asyncio.create_task(client.send({"brightness": 4}))
+            return await query_task, await send_task
+
+        thread = threading.Thread(target=fake_zm1, daemon=True)
+        thread.start()
+
+        query_response, send_response = asyncio.run(run_concurrent_requests())
+        thread.join(2)
+
+        self.assertFalse(server_result["second_arrived_before_first_response"])
+        self.assertEqual(query_response["version"], "1.0")
+        self.assertEqual(send_response["brightness"], 4)
+
+
+class AdaptivePollingPolicyTest(unittest.TestCase):
+    def test_polling_interval_is_clamped_to_minimum(self) -> None:
+        policy = AdaptivePollingPolicy(5, min_interval=15, max_interval=300)
+
+        self.assertEqual(policy.base_interval, 15)
+        self.assertEqual(policy.interval, 15)
+
+    def test_failures_back_off_and_successes_restore_base_interval(self) -> None:
+        policy = AdaptivePollingPolicy(
+            30,
+            min_interval=15,
+            max_interval=300,
+            recovery_successes=2,
+        )
+
+        self.assertEqual(policy.record_failure(), 60)
+        self.assertEqual(policy.record_failure(), 120)
+        self.assertEqual(policy.record_success(), 120)
+        self.assertEqual(policy.record_success(), 30)
+
+    def test_backoff_is_capped(self) -> None:
+        policy = AdaptivePollingPolicy(60, min_interval=15, max_interval=180)
+
+        self.assertEqual(policy.record_failure(), 120)
+        self.assertEqual(policy.record_failure(), 180)
+        self.assertEqual(policy.record_failure(), 180)
+
 
 class MetadataTest(unittest.TestCase):
     def test_translations_include_options_flow(self) -> None:
         for translation in ("en", "zh-Hans"):
-            path = ROOT / "custom_components" / "zm1" / "translations" / f"{translation}.json"
+            path = (
+                ROOT
+                / "custom_components"
+                / "zm1"
+                / "translations"
+                / f"{translation}.json"
+            )
             data = json.loads(path.read_text(encoding="utf-8"))
             option_fields = data["options"]["step"]["init"]["data"]
             reconfigure_fields = data["config"]["step"]["reconfigure"]["data"]

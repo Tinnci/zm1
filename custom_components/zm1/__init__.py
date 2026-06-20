@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -22,7 +26,6 @@ from .const import (
     ATTR_OTA_URL,
     ATTR_PAYLOAD,
     CONF_MAC,
-    CONF_TRANSPORT,
     DOMAIN,
     PLATFORMS,
     SERVICE_CONFIGURE_MQTT,

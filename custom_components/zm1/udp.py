@@ -9,7 +9,14 @@ from typing import Any
 
 try:
     from .const import SENSOR_REPORT_FIELDS
-    from .protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload, normalize_mac
+    from .protocol import (
+        build_command,
+        build_discovery_command,
+        build_query,
+        decode_payload,
+        encode_payload,
+        normalize_mac,
+    )
 except ImportError:  # Allows direct unittest imports without Home Assistant installed.
     SENSOR_REPORT_FIELDS = {
         "temperature",
@@ -24,7 +31,14 @@ except ImportError:  # Allows direct unittest imports without Home Assistant ins
         "eCO2",
         "eco2",
     }
-    from protocol import build_command, build_discovery_command, build_query, decode_payload, encode_payload, normalize_mac
+    from protocol import (
+        build_command,
+        build_discovery_command,
+        build_query,
+        decode_payload,
+        encode_payload,
+        normalize_mac,
+    )
 
 
 class ZM1Error(Exception):
@@ -55,29 +69,32 @@ class ZM1UDPClient:
         self.timeout = timeout
         self.bind_host = bind_host
         self.last_sensor_report: dict[str, Any] = {}
+        self._request_lock = asyncio.Lock()
 
     async def send(self, values: dict[str, Any]) -> dict[str, Any]:
         """Send a zM1 command and wait for the JSON response."""
         payload = build_command(self.mac, values)
         expected_fields = {field for field in values if field != "setting"}
-        return await asyncio.to_thread(
-            self._send_sync,
-            payload,
-            self.host,
-            self.command_port,
-            expected_fields,
-        )
+        async with self._request_lock:
+            return await asyncio.to_thread(
+                self._send_sync,
+                payload,
+                self.host,
+                self.command_port,
+                expected_fields,
+            )
 
     async def query(self, *fields: str) -> dict[str, Any]:
         """Query one or more zM1 fields."""
         payload = build_query(self.mac, *fields)
-        return await asyncio.to_thread(
-            self._send_sync,
-            payload,
-            self.host,
-            self.command_port,
-            set(fields),
-        )
+        async with self._request_lock:
+            return await asyncio.to_thread(
+                self._send_sync,
+                payload,
+                self.host,
+                self.command_port,
+                set(fields),
+            )
 
     async def configure_mqtt(
         self,
@@ -104,7 +121,8 @@ class ZM1UDPClient:
 
     async def read_sensor_report(self, *, timeout: float = 5.5) -> dict[str, Any]:
         """Wait for an unsolicited zM1 sensor report."""
-        return await asyncio.to_thread(self._read_sensor_report_sync, timeout)
+        async with self._request_lock:
+            return await asyncio.to_thread(self._read_sensor_report_sync, timeout)
 
     def _send_sync(
         self,
@@ -224,7 +242,9 @@ def _discover_sync(
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(timeout)
         sock.bind(("0.0.0.0", response_port))
-        sock.sendto(encode_payload(build_discovery_command()), (broadcast_address, command_port))
+        sock.sendto(
+            encode_payload(build_discovery_command()), (broadcast_address, command_port)
+        )
         while True:
             try:
                 data, addr = sock.recvfrom(1024)

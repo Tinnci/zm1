@@ -48,7 +48,7 @@
           "scan_interval": "轮询间隔"
         },
         "data_description": {
-          "scan_interval": "状态轮询间隔，单位为秒。可填 5-3600。"
+          "scan_interval": "状态轮询间隔，单位为秒。可填 15-3600。"
         }
       }
     }

@@ -48,7 +48,7 @@
           "scan_interval": "Scan interval"
         },
         "data_description": {
-          "scan_interval": "Polling interval in seconds. Use 5-3600."
+          "scan_interval": "Polling interval in seconds. Use 15-3600."
         }
       }
     }

@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_UDP_COMMAND_PORT,
     DEFAULT_UDP_RESPONSE_PORT,
     DOMAIN,
+    MIN_SCAN_INTERVAL,
     TRANSPORT_UDP,
     TRANSPORTS,
     ZM1_ZEROCONF_TYPE,
@@ -54,7 +55,9 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
         return ZM1OptionsFlow(config_entry)
 
-    async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo) -> FlowResult:
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> FlowResult:
         """Handle zM1 mDNS discovery."""
         try:
             mac = normalize_mac(str(discovery_info.properties["mac"]))
@@ -99,7 +102,9 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"name": self._discovered_title},
         )
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
 
@@ -122,9 +127,15 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         command_port=data[CONF_UDP_COMMAND_PORT],
                         response_port=data[CONF_UDP_RESPONSE_PORT],
                     )
-                    validation_host = find_discovered_host(responses, data[CONF_MAC]) or ""
+                    validation_host = (
+                        find_discovered_host(responses, data[CONF_MAC]) or ""
+                    )
                     response = next(
-                        (item for item in responses if item.get("mac") == data[CONF_MAC]),
+                        (
+                            item
+                            for item in responses
+                            if item.get("mac") == data[CONF_MAC]
+                        ),
                         {},
                     )
 
@@ -152,7 +163,11 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(data[CONF_MAC])
                 self._abort_if_unique_id_configured()
 
-                name = data.get(CONF_NAME) or response.get("name") or f"zM1 {data[CONF_MAC][-4:].upper()}"
+                name = (
+                    data.get(CONF_NAME)
+                    or response.get("name")
+                    or f"zM1 {data[CONF_MAC][-4:].upper()}"
+                )
                 data[CONF_NAME] = name
                 if not data.get(CONF_MQTT_BASE_TOPIC):
                     data[CONF_MQTT_BASE_TOPIC] = DEFAULT_MQTT_BASE_TOPIC
@@ -192,7 +207,9 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         command_port=data[CONF_UDP_COMMAND_PORT],
                         response_port=data[CONF_UDP_RESPONSE_PORT],
                     )
-                    validation_host = find_discovered_host(responses, data[CONF_MAC]) or ""
+                    validation_host = (
+                        find_discovered_host(responses, data[CONF_MAC]) or ""
+                    )
 
                 if not validation_host:
                     errors["base"] = "cannot_connect"
@@ -256,8 +273,12 @@ def _config_schema() -> vol.Schema:
             vol.Optional(CONF_NAME, default=""): str,
             vol.Required(CONF_TRANSPORT, default=TRANSPORT_UDP): vol.In(TRANSPORTS),
             vol.Optional(CONF_HOST, default=""): str,
-            vol.Optional(CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT): cv.port,
-            vol.Optional(CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT): cv.port,
+            vol.Optional(
+                CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT
+            ): cv.port,
+            vol.Optional(
+                CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT
+            ): cv.port,
             vol.Optional(CONF_MQTT_BASE_TOPIC, default=DEFAULT_MQTT_BASE_TOPIC): str,
         }
     )
@@ -270,7 +291,7 @@ def _options_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
             vol.Optional(
                 CONF_SCAN_INTERVAL,
                 default=options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-            ): vol.All(cv.positive_int, vol.Range(min=5, max=3600)),
+            ): vol.All(cv.positive_int, vol.Range(min=MIN_SCAN_INTERVAL, max=3600)),
         }
     )
 
