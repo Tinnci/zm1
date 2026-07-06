@@ -53,9 +53,13 @@ class ZM1Light(ZM1Entity, LightEntity):
             brightness,
             fallback=self._raw_brightness or MAX_ZM1_BRIGHTNESS,
         )
+        if self.coordinator.data is not None and raw == self._raw_brightness:
+            return
         await self.coordinator.async_send_command({"brightness": raw})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        if self.coordinator.data is not None and self._raw_brightness == 0:
+            return
         await self.coordinator.async_send_command({"brightness": 0})
 
     @property

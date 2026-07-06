@@ -187,8 +187,32 @@ class ZM1UdpTransport:
         return data
 
     async def async_send_command(self, values: dict[str, Any]) -> dict[str, Any]:
-        client = await self._async_get_udp_client()
-        return await client.send(values)
+        try:
+            client = await self._async_get_udp_client()
+            response = await client.send(values)
+        except ZM1TimeoutError:
+            _LOGGER.debug("zM1 UDP command timed out; rediscovering host and retrying once")
+            try:
+                client = await self._async_get_udp_client(force_discovery=True)
+                response = await client.send(values)
+            except ZM1Error as retry_err:
+                self._record_failure()
+                async_create_udp_response_issue(
+                    self.hass,
+                    entry_id=self.entry.entry_id,
+                    device_name=self.entry.title,
+                    response_port=self.response_port,
+                )
+                raise retry_err
+        except ZM1Error:
+            self._record_failure()
+            raise
+
+        async_delete_issue(
+            self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id
+        )
+        self._record_success()
+        return response
 
     async def async_configure_mqtt(
         self,
