@@ -21,6 +21,8 @@ zM1 sends UDP replies and unsolicited sensor packets to local UDP port `10181`. 
 
 UDP requests are serialized per device because commands, state queries, and sensor report reads share the same local response port. UDP polling also adapts to reliability: the configured polling interval is clamped to 15-3600 seconds, repeated failures back off within that range, and stable successful updates restore the configured interval.
 
+When a device already has valid state, two consecutive failed polling cycles retain the last known state without changing availability. A third failure marks the device unavailable and creates a Repair issue. After that, three consecutive successful cycles are required before availability is restored. Direct user commands still report failures immediately. This hysteresis prevents isolated UDP packet loss from producing availability and log flapping while preserving a clear signal for sustained outages.
+
 When Home Assistant cannot receive zM1 UDP replies, the integration creates a Repair issue with the affected device name and response port. When MQTT mode is selected but Home Assistant's MQTT client is not ready, the integration creates a Repair issue that points to the missing MQTT broker/client setup. These issues are cleared automatically after the integration recovers.
 
 Sensor packets currently observed from zM1 include temperature, humidity, formaldehyde, and PM2.5. The integration also exposes reserved TVOC, CO2, and eCO2 sensors so newer firmware fields appear automatically when reported.

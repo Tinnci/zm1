@@ -122,6 +122,7 @@ class ZM1UdpTransport:
             CONF_UDP_RESPONSE_PORT, DEFAULT_UDP_RESPONSE_PORT
         )
         self._client: ZM1UDPClient | None = None
+        self._unavailable_reported = False
         self._polling_policy = AdaptivePollingPolicy(
             entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             min_interval=MIN_SCAN_INTERVAL,
@@ -154,10 +155,16 @@ class ZM1UdpTransport:
         try:
             client = await self._async_get_udp_client()
             data = await self._async_query_state(client, current_data=current_data)
+            self._record_success()
+            if self._unavailable_reported and not self._polling_policy.is_healthy:
+                raise UpdateFailed(
+                    "Waiting for stable zM1 UDP replies before marking the device "
+                    "available"
+                )
+            self._unavailable_reported = False
             async_delete_issue(
                 self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id
             )
-            self._record_success()
             return data
         except ZM1TimeoutError:
             try:
@@ -165,12 +172,19 @@ class ZM1UdpTransport:
                 data = await self._async_query_state(client, current_data=current_data)
             except ZM1Error as retry_err:
                 self._record_failure()
+                if not self._polling_policy.should_report_unavailable:
+                    if current_data:
+                        return current_data
+                    raise UpdateFailed(
+                        "Temporary zM1 UDP timeout; waiting for the next poll"
+                    ) from retry_err
                 async_create_udp_response_issue(
                     self.hass,
                     entry_id=self.entry.entry_id,
                     device_name=device_name,
                     response_port=self.response_port,
                 )
+                self._unavailable_reported = True
                 raise UpdateFailed(
                     "Timed out waiting for zM1 UDP response. mDNS/host discovery can "
                     "succeed while state queries fail if Home Assistant cannot receive "
@@ -178,12 +192,30 @@ class ZM1UdpTransport:
                 ) from retry_err
         except ZM1Error as err:
             self._record_failure()
+            if not self._polling_policy.should_report_unavailable:
+                if current_data:
+                    return current_data
+                raise UpdateFailed(
+                    "Temporary zM1 UDP error; waiting for the next poll"
+                ) from err
+            async_create_udp_response_issue(
+                self.hass,
+                entry_id=self.entry.entry_id,
+                device_name=device_name,
+                response_port=self.response_port,
+            )
+            self._unavailable_reported = True
             raise UpdateFailed(str(err)) from err
 
+        self._record_success()
+        if self._unavailable_reported and not self._polling_policy.is_healthy:
+            raise UpdateFailed(
+                "Waiting for stable zM1 UDP replies before marking the device available"
+            )
+        self._unavailable_reported = False
         async_delete_issue(
             self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id
         )
-        self._record_success()
         return data
 
     async def async_send_command(self, values: dict[str, Any]) -> dict[str, Any]:
@@ -191,7 +223,9 @@ class ZM1UdpTransport:
             client = await self._async_get_udp_client()
             response = await client.send(values)
         except ZM1TimeoutError:
-            _LOGGER.debug("zM1 UDP command timed out; rediscovering host and retrying once")
+            _LOGGER.debug(
+                "zM1 UDP command timed out; rediscovering host and retrying once"
+            )
             try:
                 client = await self._async_get_udp_client(force_discovery=True)
                 response = await client.send(values)
@@ -208,10 +242,12 @@ class ZM1UdpTransport:
             self._record_failure()
             raise
 
-        async_delete_issue(
-            self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id
-        )
         self._record_success()
+        if not self._unavailable_reported or self._polling_policy.is_healthy:
+            self._unavailable_reported = False
+            async_delete_issue(
+                self.hass, ISSUE_UDP_RESPONSE_UNAVAILABLE, self.entry.entry_id
+            )
         return response
 
     async def async_configure_mqtt(

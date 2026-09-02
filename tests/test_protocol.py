@@ -272,6 +272,40 @@ class AdaptivePollingPolicyTest(unittest.TestCase):
         self.assertEqual(policy.record_failure(), 180)
         self.assertEqual(policy.record_failure(), 180)
 
+    def test_transient_failures_do_not_report_unavailable(self) -> None:
+        policy = AdaptivePollingPolicy(
+            30,
+            min_interval=15,
+            max_interval=300,
+            transient_failure_tolerance=2,
+        )
+
+        policy.record_failure()
+        self.assertFalse(policy.should_report_unavailable)
+        policy.record_failure()
+        self.assertFalse(policy.should_report_unavailable)
+        policy.record_failure()
+        self.assertTrue(policy.should_report_unavailable)
+
+    def test_unavailable_policy_requires_stable_recovery(self) -> None:
+        policy = AdaptivePollingPolicy(
+            30,
+            min_interval=15,
+            max_interval=300,
+            recovery_successes=3,
+            transient_failure_tolerance=1,
+        )
+
+        policy.record_failure()
+        policy.record_failure()
+        self.assertTrue(policy.should_report_unavailable)
+        self.assertFalse(policy.is_healthy)
+        policy.record_success()
+        policy.record_success()
+        self.assertFalse(policy.is_healthy)
+        policy.record_success()
+        self.assertTrue(policy.is_healthy)
+
 
 class MetadataTest(unittest.TestCase):
     def test_translations_include_options_flow(self) -> None:

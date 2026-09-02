@@ -13,6 +13,7 @@ class AdaptivePollingPolicy:
     min_interval: int
     max_interval: int
     recovery_successes: int = 3
+    transient_failure_tolerance: int = 2
     _interval: int = 0
     _failures: int = 0
     _successes_after_failure: int = 0
@@ -21,10 +22,9 @@ class AdaptivePollingPolicy:
         self.configured_interval = int(self.configured_interval)
         self.min_interval = int(self.min_interval)
         self.max_interval = int(self.max_interval)
-        if self.max_interval < self.min_interval:
-            self.max_interval = self.min_interval
-        if self.recovery_successes < 1:
-            self.recovery_successes = 1
+        self.max_interval = max(self.max_interval, self.min_interval)
+        self.recovery_successes = max(self.recovery_successes, 1)
+        self.transient_failure_tolerance = max(self.transient_failure_tolerance, 0)
         self._interval = self.base_interval
 
     @property
@@ -41,6 +41,16 @@ class AdaptivePollingPolicy:
     def failures(self) -> int:
         """Return consecutive failed update attempts."""
         return self._failures
+
+    @property
+    def should_report_unavailable(self) -> bool:
+        """Return whether failures exceeded the stale-data tolerance."""
+        return self._failures > self.transient_failure_tolerance
+
+    @property
+    def is_healthy(self) -> bool:
+        """Return whether the policy has fully recovered."""
+        return self._failures == 0
 
     def record_success(self) -> int:
         """Record a successful update and return the next interval."""
