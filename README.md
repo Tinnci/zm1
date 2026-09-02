@@ -1,53 +1,99 @@
-# zM1 Home Assistant integration
+# zM1 for Home Assistant
 
-Custom Home Assistant integration for zM1 devices using the JSON UDP protocol and the device MQTT topics.
+Control zM1 devices through local UDP or Home Assistant MQTT.
 
-## Install
+The integration discovers local devices, tracks transport health, and limits
+availability changes during short UDP outages.
 
-Copy `custom_components/zm1` into your Home Assistant `/config/custom_components/` directory and restart Home Assistant.
+Minimum Home Assistant version: `2026.2.0`.
 
-Then add the integration from **Settings > Devices & services > Add integration > zM1**.
+## Transport selection
 
-Minimum target version: Home Assistant `2026.2.0`. `hacs.json` declares this minimum version for HACS users.
+| Transport | Command path | State path | Requirement |
+| --- | --- | --- | --- |
+| UDP | JSON to device port `10182` | Replies on local port `10181` | Local network access |
+| MQTT | `device/zm1/<mac>/set` | State and sensor topics | Home Assistant MQTT |
 
-## Supported transports
+UDP does not require MQTT, Docker, or an add-on.
 
-- UDP direct control: discovers the device with mDNS service `_zcontrol._tcp.local.` first, falls back to the documented UDP broadcast command, sends JSON commands to device UDP port `10182`, and listens for replies on local UDP port `10181`.
-- MQTT control: publishes commands to `device/zm1/<mac>/set` and subscribes to `device/zm1/<mac>/state` plus `device/zm1/<mac>/sensor`.
+## UDP behavior
 
-UDP mode does not require MQTT, Docker, add-ons, or any other service. zM1 advertises `_zcontrol._tcp.local.` over mDNS; Home Assistant can discover it automatically and stores the last resolved host as a fallback. The host field is optional and only acts as a manual override. If mDNS is unavailable, the integration falls back to broadcasting `{"cmd":"device report"}` and matching the returned MAC. MQTT mode is optional and requires Home Assistant's MQTT integration to be configured with a working MQTT broker, such as the official Mosquitto Broker add-on or an existing broker on your network.
+The integration first resolves `_zcontrol._tcp.local.` with mDNS. It stores
+the last host as a fallback.
 
-zM1 sends UDP replies and unsolicited sensor packets to local UDP port `10181`. Home Assistant OS and Supervised normally run on the host network. If you run Home Assistant Container with bridge networking, publish or host-network UDP `10181`, otherwise state queries can time out even when mDNS discovery works. In that case the integration still creates the device entry and keeps retrying.
+If mDNS fails, the integration broadcasts `{"cmd":"device report"}`. It uses
+the response that matches the configured MAC.
 
-UDP requests are serialized per device because commands, state queries, and sensor report reads share the same local response port. UDP polling also adapts to reliability: the configured polling interval is clamped to 15-3600 seconds, repeated failures back off within that range, and stable successful updates restore the configured interval.
+The host option is a manual override. It is not required for normal discovery.
 
-When a device already has valid state, two consecutive failed polling cycles retain the last known state without changing availability. A third failure marks the device unavailable and creates a Repair issue. After that, three consecutive successful cycles are required before availability is restored. Direct user commands still report failures immediately. This hysteresis prevents isolated UDP packet loss from producing availability and log flapping while preserving a clear signal for sustained outages.
+zM1 sends replies and sensor reports to local UDP port `10181`. Home Assistant
+OS and Supervised normally use host networking.
 
-When Home Assistant cannot receive zM1 UDP replies, the integration creates a Repair issue with the affected device name and response port. When MQTT mode is selected but Home Assistant's MQTT client is not ready, the integration creates a Repair issue that points to the missing MQTT broker/client setup. These issues are cleared automatically after the integration recovers.
+Home Assistant Container must publish this UDP port or use host networking.
+Otherwise, discovery can work while state requests time out.
 
-Sensor packets currently observed from zM1 include temperature, humidity, formaldehyde, and PM2.5. The integration also exposes reserved TVOC, CO2, and eCO2 sensors so newer firmware fields appear automatically when reported.
+The integration serializes UDP requests for each device. Commands, state
+requests, and sensor requests share one response port.
 
-The MAC must be lowercase without separators, for example `b0f89323ad46`. The config flow accepts `b0:f8:93:23:ad:46` and normalizes it.
+Polling uses these rules:
 
-## Reconfigure and options
+- The configured interval is from 15 to 3600 seconds.
+- Repeated failures increase the interval.
+- Stable success restores the configured interval.
+- Two failed polls keep the last valid state.
+- The third failed poll marks the device unavailable.
+- Three successful polls restore availability.
 
-After a device is added, use **Reconfigure** to change connection settings:
+A direct user command still reports its failure immediately. The polling rules
+only reduce availability and log flapping.
 
-- transport (`udp` or `mqtt`)
-- host override
-- UDP command and response ports
-- MQTT base topic
+## MQTT behavior
 
-Use **Options** to change the polling interval in seconds. Changing either
-connection settings or options reloads the integration entry automatically.
+MQTT mode requires a working Home Assistant MQTT integration and broker. The
+official Mosquitto Broker add-on is one option.
+
+The integration creates a Repairs issue when the Home Assistant MQTT client is
+not ready. It removes the issue after recovery.
+
+## Sensors
+
+Observed zM1 packets include:
+
+- temperature,
+- humidity,
+- formaldehyde,
+- PM2.5.
+
+Reserved TVOC, CO2, and eCO2 sensors accept fields from newer firmware.
+
+## Installation
+
+1. Copy `custom_components/zm1` to `/config/custom_components/zm1`.
+2. Restart Home Assistant.
+3. Open **Settings > Devices & services**.
+4. Add **zM1**.
+
+The MAC must use lowercase characters without separators. Example:
+`b0f89323ad46`.
+
+The config flow also accepts `b0:f8:93:23:ad:46` and converts it.
+
+## Configuration
+
+Use **Reconfigure** to change:
+
+- UDP or MQTT transport,
+- host override,
+- UDP command and response ports,
+- MQTT base topic.
+
+Use **Options** to change the polling interval.
+
+The integration reloads the config entry after either change.
 
 ## Services
 
-- `zm1.send_command`: send any JSON payload supported by zM1.
-- `zm1.configure_mqtt`: write the device MQTT settings through UDP.
-- `zm1.ota_update`: start OTA by sending a firmware URL through UDP.
-
-Examples:
+### Send a device command
 
 ```yaml
 action: zm1.send_command
@@ -56,6 +102,8 @@ data:
   payload:
     brightness: 3
 ```
+
+### Configure device MQTT
 
 ```yaml
 action: zm1.configure_mqtt
@@ -67,6 +115,8 @@ data:
   mqtt_password: password
 ```
 
+### Start an OTA update
+
 ```yaml
 action: zm1.ota_update
 data:
@@ -74,18 +124,55 @@ data:
   ota_url: http://192.168.3.10/zM1_firmware.bin
 ```
 
-## Protocol test
+Only use firmware that matches the device. Keep the firmware URL on a trusted
+network.
 
-Run the local protocol checks with:
+## Troubleshooting
 
-```powershell
+### UDP discovery works, but state requests fail
+
+Confirm that Home Assistant can receive UDP port `10181`. Check container
+networking and firewall rules.
+
+### The device becomes unavailable
+
+Open the Home Assistant Repairs page. The issue identifies the response port
+and clears after stable recovery.
+
+One or two failed polls do not change availability. Check for at least three
+consecutive failures.
+
+### MQTT mode does not start
+
+Confirm that Home Assistant has a loaded MQTT integration and a connected
+broker.
+
+## Development
+
+Use `uv` for tests.
+
+```bash
 uv run python -m unittest discover -s tests
+git diff --check
 ```
+
+CI also runs Home Assistant `hassfest` and HACS validation.
 
 ## Release
 
-CI runs protocol tests with `uv`, plus Home Assistant `hassfest` and HACS validation. To publish a HACS zip release:
+1. Set the same semantic version in `manifest.json` and `pyproject.toml`.
+2. Create a `vX.Y.Z` tag.
+3. Push the tag.
 
-1. Update `custom_components/zm1/manifest.json` and `pyproject.toml` to the same semantic version.
-2. Tag the commit as `vX.Y.Z`.
-3. Push the tag. GitHub Actions builds `zm1.zip`, verifies the tag matches the manifest version, and attaches the zip plus a SHA256 file to the release.
+The release workflow builds `zm1.zip`. It verifies the version and adds a
+SHA256 file to the release.
+
+## Documentation style
+
+This README applies practical rules from ASD-STE100 Simplified Technical
+English, Issue 9. It uses active voice, short sentences, and consistent terms.
+
+This use is not an ASD-STE100 compliance certification. Project-specific terms
+remain necessary.
+
+Reference: ASD STEMG. [ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/), Issue 9, 2025.
