@@ -70,7 +70,5 @@ class AdaptivePollingPolicy:
         self._failures += 1
         self._successes_after_failure = 0
         multiplier = 2 ** min(self._failures, 4)
-        self._interval = min(
-            self.max_interval, max(self.base_interval, self.base_interval * multiplier)
-        )
+        self._interval = min(self.max_interval, max(self.base_interval, self.base_interval * multiplier))
         return self._interval

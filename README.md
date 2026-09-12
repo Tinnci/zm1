@@ -202,8 +202,12 @@ CI also runs Home Assistant `hassfest` and HACS validation.
 2. Create a `vX.Y.Z` tag.
 3. Push the tag.
 
-The release workflow builds `zm1.zip`. It verifies the version and adds a
-SHA256 file to the release.
+The release workflow checks out the selected tag and runs the same pytest,
+Ruff, Hassfest and HACS jobs as CI. It builds `zm1.zip` with `manifest.json`
+at the archive root and retains the existing SHA256 companion file.
+Extract the archive directly into `/config/custom_components/zm1`.
+
+See [Release preparation / 发布准备](docs/releasing.md) for version 0.3.0.
 
 ## Documentation style
 

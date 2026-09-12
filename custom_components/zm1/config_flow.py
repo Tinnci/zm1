@@ -55,9 +55,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
         return ZM1OptionsFlow(config_entry)
 
-    async def async_step_zeroconf(
-        self, discovery_info: ZeroconfServiceInfo
-    ) -> FlowResult:
+    async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo) -> FlowResult:
         """Handle zM1 mDNS discovery."""
         try:
             mac = normalize_mac(str(discovery_info.properties["mac"]))
@@ -65,9 +63,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="invalid_mac")
 
         await self.async_set_unique_id(mac)
-        self._abort_if_unique_id_configured(
-            updates={CONF_ZEROCONF_NAME: discovery_info.name}
-        )
+        self._abort_if_unique_id_configured(updates={CONF_ZEROCONF_NAME: discovery_info.name})
 
         port = discovery_info.port or DEFAULT_UDP_COMMAND_PORT
         title = _discovery_title(discovery_info.name, mac)
@@ -86,9 +82,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.context["title_placeholders"] = {"name": title}
         return await self.async_step_zeroconf_confirm()
 
-    async def async_step_zeroconf_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_zeroconf_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Confirm zM1 mDNS discovery."""
         if user_input is not None:
             return self.async_create_entry(
@@ -102,9 +96,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"name": self._discovered_title},
         )
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
 
@@ -127,15 +119,9 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         command_port=data[CONF_UDP_COMMAND_PORT],
                         response_port=data[CONF_UDP_RESPONSE_PORT],
                     )
-                    validation_host = (
-                        find_discovered_host(responses, data[CONF_MAC]) or ""
-                    )
+                    validation_host = find_discovered_host(responses, data[CONF_MAC]) or ""
                     response = next(
-                        (
-                            item
-                            for item in responses
-                            if item.get("mac") == data[CONF_MAC]
-                        ),
+                        (item for item in responses if item.get("mac") == data[CONF_MAC]),
                         {},
                     )
 
@@ -165,11 +151,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(data[CONF_MAC])
                 self._abort_if_unique_id_configured()
 
-                name = (
-                    data.get(CONF_NAME)
-                    or response.get("name")
-                    or f"zM1 {data[CONF_MAC][-4:].upper()}"
-                )
+                name = data.get(CONF_NAME) or response.get("name") or f"zM1 {data[CONF_MAC][-4:].upper()}"
                 data[CONF_NAME] = name
                 if not data.get(CONF_MQTT_BASE_TOPIC):
                     data[CONF_MQTT_BASE_TOPIC] = DEFAULT_MQTT_BASE_TOPIC
@@ -184,9 +166,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_reconfigure(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle reconfiguration of connection settings."""
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
@@ -209,9 +189,7 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         command_port=data[CONF_UDP_COMMAND_PORT],
                         response_port=data[CONF_UDP_RESPONSE_PORT],
                     )
-                    validation_host = (
-                        find_discovered_host(responses, data[CONF_MAC]) or ""
-                    )
+                    validation_host = find_discovered_host(responses, data[CONF_MAC]) or ""
 
                 if not validation_host:
                     errors["base"] = "cannot_connect"
@@ -257,9 +235,7 @@ class ZM1OptionsFlow(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self.entry = entry
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage zM1 options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=dict(user_input))
@@ -277,12 +253,8 @@ def _config_schema() -> vol.Schema:
             vol.Optional(CONF_NAME, default=""): str,
             vol.Required(CONF_TRANSPORT, default=TRANSPORT_UDP): vol.In(TRANSPORTS),
             vol.Optional(CONF_HOST, default=""): str,
-            vol.Optional(
-                CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT
-            ): cv.port,
-            vol.Optional(
-                CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT
-            ): cv.port,
+            vol.Optional(CONF_UDP_COMMAND_PORT, default=DEFAULT_UDP_COMMAND_PORT): cv.port,
+            vol.Optional(CONF_UDP_RESPONSE_PORT, default=DEFAULT_UDP_RESPONSE_PORT): cv.port,
             vol.Optional(CONF_MQTT_BASE_TOPIC, default=DEFAULT_MQTT_BASE_TOPIC): str,
         }
     )
@@ -299,9 +271,7 @@ def _options_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
             vol.Optional(
                 CONF_SCAN_INTERVAL,
                 default=scan_interval,
-            ): vol.All(
-                cv.positive_int, vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
-            ),
+            ): vol.All(cv.positive_int, vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)),
         }
     )
 
