@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -18,7 +19,7 @@ class ZM1Entity(CoordinatorEntity[ZM1Coordinator]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        data: dict[str, Any] = self.coordinator.data or {}
+        data: Mapping[str, Any] = self.coordinator.data or {}
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.mac)},
             manufacturer="zM1",
@@ -26,4 +27,3 @@ class ZM1Entity(CoordinatorEntity[ZM1Coordinator]):
             name=data.get("name") or self.coordinator.device_name,
             sw_version=data.get("version"),
         )
-

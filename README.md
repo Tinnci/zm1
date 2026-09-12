@@ -2,8 +2,8 @@
 
 Control zM1 devices through local UDP or Home Assistant MQTT.
 
-The integration discovers local devices, tracks transport health, and limits
-availability changes during short UDP outages.
+The integration receives device reports continuously, tracks each field's age,
+and retains recent measurements during short UDP outages.
 
 Minimum Home Assistant version: `2026.2.0`.
 
@@ -32,20 +32,28 @@ OS and Supervised normally use host networking.
 Home Assistant Container must publish this UDP port or use host networking.
 Otherwise, discovery can work while state requests time out.
 
-The integration serializes UDP requests for each device. Commands, state
-requests, and sensor requests share one response port.
+One asynchronous listener shares the response port across devices and discovery.
+It keeps receiving while no query is active. Requests for the same device are
+serialized, and malformed packets do not interrupt reception.
 
 Polling uses these rules:
 
 - The configured interval is from 15 to 3600 seconds.
 - Repeated failures increase the interval.
 - Stable success restores the configured interval.
-- Two failed polls keep the last valid state.
-- The third failed poll marks the device unavailable.
-- Three successful polls restore availability.
+- Read-only queries retry at most once. Write commands are sent once.
+- Transport failures use the existing backoff and Repairs recovery policy.
+- Each sensor and brightness field stays available for 300 seconds after its
+  last valid report, independently of failed polls or other fields' updates.
+- An independent timer expires old fields even during long polling backoff.
+- One new valid report restores that field immediately.
 
-A direct user command still reports its failure immediately. The polling rules
-only reduce availability and log flapping.
+A command timeout still reports failure to the caller. A matching response is
+reported state, not proof of physical application. The firmware has no request
+sequence field, so an identical delayed response cannot be tied to one command.
+
+温湿度与亮度按各自的报告时间过期。状态查询成功不会刷新旧温度，短暂超时也不会立即
+隐藏仍有效的测量；持续断联达到 300 秒后，旧读数停止作为可用状态。
 
 ## MQTT behavior
 
@@ -54,6 +62,10 @@ official Mosquitto Broker add-on is one option.
 
 The integration creates a Repairs issue when the Home Assistant MQTT client is
 not ready. It removes the issue after recovery.
+
+Publishing a command does not update observed state. Only incoming reports do.
+Retained messages have no sampling timestamp, so they cannot establish freshness;
+the integration waits for a live report.
 
 ## Sensors
 
@@ -64,7 +76,16 @@ Observed zM1 packets include:
 - formaldehyde,
 - PM2.5.
 
-Reserved TVOC, CO2, and eCO2 sensors accept fields from newer firmware.
+M1 does not provide physical TVOC, CO2 or eCO2 measurements. These former reserved
+entities are no longer created. Setup removes only their old registry entries
+owned by this integration and device, including renamed entries.
+
+Measurement attributes expose `observed_at`, `observation_source` and
+`observation_max_age_s`. The timestamp is when the integration received that
+field, not the device's sampling clock. Partial reports leave other fields' times
+unchanged. State snapshots are deeply immutable.
+
+See [Protocol and observation behavior](docs/protocol-and-observations.md).
 
 ## Installation
 
@@ -139,8 +160,17 @@ networking and firewall rules.
 Open the Home Assistant Repairs page. The issue identifies the response port
 and clears after stable recovery.
 
-One or two failed polls do not change availability. Check for at least three
-consecutive failures.
+Check the field's `observed_at` attribute. A recent brightness or version reply
+does not establish that the temperature sensor is still reporting.
+
+On a separate LAN computer, collect passive observations without sending commands:
+
+```sh
+uv run python scripts/observe_udp.py --host <device-ipv4> --mac <device-mac> --duration 45
+```
+
+On the HA host, use passive packet capture instead of opening a competing socket
+on its response port.
 
 ### MQTT mode does not start
 
@@ -149,10 +179,12 @@ broker.
 
 ## Development
 
-Use `uv` for tests.
+Use `uv` for tests. The development group selects Python 3.14 and the supported
+Home Assistant test environment; integration code remains compatible with Python 3.12 syntax.
 
 ```bash
-uv run python -m unittest discover -s tests
+uv run pytest
+uv run ruff check
 git diff --check
 ```
 

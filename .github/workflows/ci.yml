@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   tests:
-    name: Protocol tests
+    name: Integration and UDP tests
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -24,10 +24,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: pyproject.toml
+          python-version: "3.14"
 
       - name: Run unit tests
-        run: uv run python -m unittest discover -s tests
+        run: uv run pytest
+
+      - name: Lint Python
+        run: uv run ruff check
 
   hassfest:
     name: Hassfest

@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
@@ -14,8 +13,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .const import (
-    CONF_MAC,
     CONF_LAST_HOST,
+    CONF_MAC,
     CONF_MQTT_BASE_TOPIC,
     CONF_SCAN_INTERVAL,
     CONF_TRANSPORT,
@@ -159,6 +158,8 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 except ZM1Error as err:
                     _LOGGER.debug("Unable to validate zM1 UDP device", exc_info=err)
                     errors["base"] = "cannot_connect"
+                finally:
+                    await client.async_close()
 
             if not errors:
                 await self.async_set_unique_id(data[CONF_MAC])
@@ -226,6 +227,8 @@ class ZM1ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     except ZM1Error as err:
                         _LOGGER.debug("Unable to validate zM1 UDP device", exc_info=err)
                         errors["base"] = "cannot_connect"
+                    finally:
+                        await client.async_close()
 
             if not errors:
                 await self.async_set_unique_id(entry.unique_id or data[CONF_MAC])

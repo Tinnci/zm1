@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import (
     HomeAssistant,
@@ -55,6 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ZM1ConfigEntry) -> bool:
         await coordinator.async_config_entry_first_refresh()
     except ConfigEntryNotReady:
         if coordinator.transport != TRANSPORT_UDP:
+            await coordinator.async_shutdown()
             raise
         _LOGGER.debug(
             "zM1 %s was discovered, but the first UDP state query timed out. "
@@ -62,6 +62,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ZM1ConfigEntry) -> bool:
             "If it stays unavailable, ensure Home Assistant can receive UDP port 10181",
             coordinator.device_name,
         )
+    except BaseException:
+        await coordinator.async_shutdown()
+        raise
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     entry.runtime_data = coordinator

@@ -40,12 +40,22 @@ class ZM1Light(ZM1Entity, LightEntity):
         self._attr_unique_id = f"{coordinator.mac}_light"
 
     @property
-    def is_on(self) -> bool:
-        return self._raw_brightness > 0
+    def is_on(self) -> bool | None:
+        raw = self._raw_brightness
+        return raw > 0 if raw is not None else None
 
     @property
     def brightness(self) -> int | None:
-        return zm1_brightness_to_ha(self._raw_brightness)
+        raw = self._raw_brightness
+        return zm1_brightness_to_ha(raw) if raw is not None else None
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.field_is_fresh("brightness")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.coordinator.observation_attributes("brightness")
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         brightness = kwargs.get("brightness")
@@ -63,6 +73,8 @@ class ZM1Light(ZM1Entity, LightEntity):
         await self.coordinator.async_send_command({"brightness": 0})
 
     @property
-    def _raw_brightness(self) -> int:
-        value = (self.coordinator.data or {}).get("brightness", 0)
+    def _raw_brightness(self) -> int | None:
+        if not self.available:
+            return None
+        value = (self.coordinator.data or {}).get("brightness")
         return clamp_zm1_brightness(value)

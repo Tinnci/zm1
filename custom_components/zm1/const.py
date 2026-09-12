@@ -25,23 +25,9 @@ DEFAULT_SCAN_INTERVAL = 30
 MIN_SCAN_INTERVAL = 15
 MAX_SCAN_INTERVAL = 3600
 MAX_ADAPTIVE_SCAN_INTERVAL = MAX_SCAN_INTERVAL
-DEFAULT_SENSOR_REPORT_TIMEOUT = 0.2
 DEFAULT_MQTT_BASE_TOPIC = "device/zm1"
 MAX_PACKET_BYTES = 1023
 ZM1_ZEROCONF_TYPE = "_zcontrol._tcp.local."
-SENSOR_REPORT_FIELDS = {
-    "temperature",
-    "humidity",
-    "formaldehyde",
-    "PM25",
-    "pm25",
-    "TVOC",
-    "tvoc",
-    "CO2",
-    "co2",
-    "eCO2",
-    "eco2",
-}
 
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_PAYLOAD = "payload"

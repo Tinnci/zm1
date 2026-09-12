@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,23 +11,25 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
     CONCENTRATION_MILLIGRAMS_PER_CUBIC_METER,
-    CONCENTRATION_PARTS_PER_MILLION,
-    EntityCategory,
     PERCENTAGE,
+    EntityCategory,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import ZM1Coordinator
 from .entity import ZM1Entity
+from .observations import EXPIRING_FIELDS
 
 
 @dataclass(frozen=True, kw_only=True)
 class ZM1SensorEntityDescription(SensorEntityDescription):
     """Describes a zM1 sensor."""
 
-    value_fn: Callable[[dict[str, Any]], Any]
+    value_fn: Callable[[Mapping[str, Any]], Any]
 
 
 SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
@@ -63,30 +65,6 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
         value_fn=lambda data: _numeric(data, "PM25", "pm25"),
     ),
     ZM1SensorEntityDescription(
-        key="tvoc",
-        translation_key="tvoc",
-        device_class=SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS,
-        native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: _numeric(data, "TVOC", "tvoc"),
-    ),
-    ZM1SensorEntityDescription(
-        key="co2",
-        translation_key="co2",
-        device_class=SensorDeviceClass.CO2,
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: _numeric(data, "CO2", "co2"),
-    ),
-    ZM1SensorEntityDescription(
-        key="eco2",
-        translation_key="eco2",
-        device_class=SensorDeviceClass.CO2,
-        native_unit_of_measurement=CONCENTRATION_PARTS_PER_MILLION,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda data: _numeric(data, "eCO2", "eco2"),
-    ),
-    ZM1SensorEntityDescription(
         key="version",
         translation_key="version",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -110,7 +88,7 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
 )
 
 
-def _numeric(data: dict[str, Any], *keys: str) -> float | None:
+def _numeric(data: Mapping[str, Any], *keys: str) -> float | None:
     for key in keys:
         value = data.get(key)
         if value is None:
@@ -129,6 +107,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up zM1 sensors."""
     coordinator: ZM1Coordinator = entry.runtime_data
+    registry = er.async_get(hass)
+    retired_ids = {f"{coordinator.mac}_{key}" for key in ("co2", "eco2", "tvoc")}
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.domain == "sensor" and entity.platform == DOMAIN and entity.unique_id in retired_ids:
+            registry.async_remove(entity.entity_id)
     async_add_entities([ZM1Sensor(coordinator, description) for description in SENSORS])
 
 
@@ -144,4 +127,19 @@ class ZM1Sensor(ZM1Entity, SensorEntity):
 
     @property
     def native_value(self) -> Any:
+        if self.entity_description.key in EXPIRING_FIELDS and not self.available:
+            return None
         return self.entity_description.value_fn(self.coordinator.data or {})
+
+    @property
+    def available(self) -> bool:
+        key = self.entity_description.key
+        if key in EXPIRING_FIELDS:
+            return self.coordinator.field_is_fresh(key)
+        return self.entity_description.value_fn(self.coordinator.data or {}) is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self.entity_description.key in EXPIRING_FIELDS:
+            return self.coordinator.observation_attributes(self.entity_description.key)
+        return None

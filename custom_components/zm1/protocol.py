@@ -10,6 +10,7 @@ from typing import Any
 DEFAULT_MQTT_BASE_TOPIC = "device/zm1"
 MAX_PACKET_BYTES = 1023
 MAX_ZM1_BRIGHTNESS = 4
+SENSOR_REPORT_FIELDS = frozenset({"temperature", "humidity", "formaldehyde", "PM25", "pm25"})
 _MAC_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
@@ -36,9 +37,9 @@ def normalize_mac(mac: str) -> str:
 
 def build_command(mac: str, values: dict[str, Any]) -> dict[str, Any]:
     """Build a zM1 command payload."""
-    payload = {"mac": normalize_mac(mac)}
-    payload.update(values)
-    return payload
+    if "mac" in values:
+        raise ZM1ProtocolError("Command fields cannot override the device MAC")
+    return {"mac": normalize_mac(mac), **values}
 
 
 def build_query(mac: str, *fields: str) -> dict[str, Any]:
@@ -56,7 +57,7 @@ def encode_payload(payload: dict[str, Any]) -> bytes:
         payload = dict(payload)
         payload["mac"] = normalize_mac(str(payload["mac"]))
 
-    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
     if len(encoded) > MAX_PACKET_BYTES:
         raise ZM1ProtocolError("zM1 payload exceeds 1023 bytes")
     return encoded
@@ -64,12 +65,14 @@ def encode_payload(payload: dict[str, Any]) -> bytes:
 
 def decode_payload(data: bytes | str) -> dict[str, Any]:
     """Decode a zM1 JSON response."""
+    if len(data if isinstance(data, bytes) else data.encode()) > MAX_PACKET_BYTES:
+        raise ZM1ProtocolError("zM1 response exceeds 1023 bytes")
     if isinstance(data, bytes):
         text = data.decode()
     else:
         text = data
     try:
-        decoded = json.loads(text)
+        decoded = json.loads(text, parse_constant=_invalid_constant)
     except json.JSONDecodeError as err:
         raise ZM1ProtocolError("zM1 response is not valid JSON") from err
 
@@ -79,6 +82,10 @@ def decode_payload(data: bytes | str) -> dict[str, Any]:
         decoded = dict(decoded)
         decoded["mac"] = normalize_mac(str(decoded["mac"]))
     return decoded
+
+
+def _invalid_constant(value: str) -> None:
+    raise ZM1ProtocolError(f"Invalid JSON number: {value}")
 
 
 def build_discovery_command() -> dict[str, str]:
