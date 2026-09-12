@@ -85,6 +85,12 @@ Measurement attributes expose `observed_at`, `observation_source` and
 field, not the device's sampling clock. Partial reports leave other fields' times
 unchanged. State snapshots are deeply immutable.
 
+Distinct values, source changes and availability transitions publish immediately.
+Repeated identical reports are published at most once per 60 seconds, with a final
+pending report retained when the device falls silent. Internal observations keep
+their full precision and reporting rate. Version, OTA progress and last-seen
+diagnostics are disabled by default for new entities; existing choices are kept.
+
 See [Protocol and observation behavior](docs/protocol-and-observations.md).
 
 ## Installation

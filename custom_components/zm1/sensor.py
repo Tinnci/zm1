@@ -68,6 +68,7 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
         key="version",
         translation_key="version",
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda data: data.get("version"),
     ),
     ZM1SensorEntityDescription(
@@ -76,6 +77,7 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda data: _numeric(data, "ota_progress"),
     ),
     ZM1SensorEntityDescription(
@@ -83,6 +85,7 @@ SENSORS: tuple[ZM1SensorEntityDescription, ...] = (
         translation_key="last_seen",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
         value_fn=lambda data: data.get("_last_seen"),
     ),
 )
@@ -124,6 +127,11 @@ class ZM1Sensor(ZM1Entity, SensorEntity):
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{coordinator.mac}_{description.key}"
+
+    def _publication_state(self) -> tuple:
+        available, value, attrs = super()._publication_state()
+        # A traffic timestamp is diagnostic metadata, not an environmental signal.
+        return available, None if self.entity_description.key == "last_seen" else value, attrs
 
     @property
     def native_value(self) -> Any:

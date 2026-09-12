@@ -56,6 +56,24 @@ other devices and integrations retain their entries.
 温湿度在短暂通信中断期间可继续使用，但期限从真实报告接收时刻起算。
 “设备仍回复状态查询”与“该温度仍有效”是两件不同的事。
 
+## Publication and statistics / 发布与统计
+
+Every distinct measurement, source or availability change publishes immediately.
+Identical reports update the immutable coordinator snapshot while HA publication
+coalesces for up to 60 seconds. A pending callback publishes the final report even
+if the device falls silent; its timestamp remains the original receipt time.
+Unload cancels that callback. The numeric comparison uses exact equality and does
+not round away small temperature or humidity changes.
+
+Version, OTA progress and last-seen entities are disabled by default for new
+registrations; existing registry choices are preserved. Enabled last-seen entities
+use the same bounded publication interval. The four environmental measurements
+retain their measurement state class for HA five-minute and long-term statistics.
+
+相同数值的报告继续更新内部观测，最多 60 秒向 HA 补发最新来源时间；数值变化、失效与
+恢复立即发布。不会把补发时刻当作传感器接收时间，也不会把小幅真实变化舍入掉。
+HA 统计回归覆盖相同读数合并后的时间加权平均、最小值和最大值。
+
 ## Physical limits and diagnostics
 
 Household passive captures on 2026-09-12 confirmed both short-lived receiver gaps

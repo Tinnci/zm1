@@ -1,12 +1,16 @@
 """End-to-end observation and availability semantics inside Home Assistant."""
 
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from homeassistant.components.sensor.recorder import _time_weighted_arithmetic_mean
+from homeassistant.core import State
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
@@ -36,6 +40,101 @@ async def coordinator(hass):
 
 def sensor(coordinator, key):
     return ZM1Sensor(coordinator, next(description for description in SENSORS if description.key == key))
+
+
+@pytest.fixture
+async def temperature_entity(coordinator, hass, freezer):
+    coordinator._transport.async_update_data = AsyncMock(return_value=None)
+    coordinator._handle_transport_message({"temperature": "26.5"}, datetime.now(UTC), "udp")
+    entity = sensor(coordinator, "temperature")
+    entity.entity_id = "sensor.test_temperature"
+    component = EntityComponent(logging.getLogger(__name__), "sensor", hass)
+    await component.async_add_entities([entity])
+    yield entity
+    await entity.async_remove()
+
+
+async def test_repeated_reports_keep_raw_freshness_without_repeated_ha_changes(
+    coordinator, temperature_entity, hass, freezer
+):
+    now = datetime.now(UTC)
+    first = hass.states.get(temperature_entity.entity_id)
+    freezer.move_to(now + timedelta(seconds=5))
+    coordinator._handle_transport_message({"temperature": "26.5"}, datetime.now(UTC), "udp")
+
+    assert coordinator.data["_observed_at"]["temperature"] == datetime.now(UTC)
+    assert hass.states.get(temperature_entity.entity_id) is first
+
+    freezer.move_to(now + timedelta(seconds=10))
+    coordinator._handle_transport_message({"temperature": "26.51"}, datetime.now(UTC), "udp")
+    changed = hass.states.get(temperature_entity.entity_id)
+    assert changed.state == "26.51"
+    assert changed.attributes["observed_at"] == datetime.now(UTC).isoformat()
+
+    freezer.move_to(now + timedelta(seconds=15))
+    coordinator._handle_transport_message({"humidity": "60.1"}, datetime.now(UTC), "udp")
+    assert hass.states.get(temperature_entity.entity_id) is changed
+
+
+async def test_pending_report_is_published_before_silence_and_expires_from_its_receipt(
+    coordinator, temperature_entity, hass, freezer
+):
+    now = datetime.now(UTC)
+    last_report = now + timedelta(seconds=5)
+    freezer.move_to(last_report)
+    coordinator._handle_transport_message({"temperature": "26.5"}, last_report, "udp")
+
+    freezer.move_to(now + timedelta(seconds=61))
+    async_fire_time_changed(hass, datetime.now(UTC))
+    await hass.async_block_till_done()
+    state = hass.states.get(temperature_entity.entity_id)
+    assert state.attributes["observed_at"] == last_report.isoformat()
+
+    freezer.move_to(last_report + timedelta(seconds=OBSERVATION_TTL + 1))
+    async_fire_time_changed(hass, datetime.now(UTC))
+    await hass.async_block_till_done()
+    assert hass.states.get(temperature_entity.entity_id).state == "unavailable"
+    coordinator._handle_transport_message({"temperature": "26.5"}, datetime.now(UTC), "udp")
+    assert hass.states.get(temperature_entity.entity_id).state == "26.5"
+
+
+async def test_environmental_statistics_remain_enabled_while_diagnostics_are_opt_in(coordinator):
+    for description in SENSORS:
+        entity = sensor(coordinator, description.key)
+        measurement = description.key in {"temperature", "humidity", "pm25", "formaldehyde"}
+        assert entity.entity_registry_enabled_default is measurement
+        if measurement:
+            assert entity.state_class == "measurement"
+
+
+async def test_coalescing_preserves_five_minute_statistics(coordinator, temperature_entity, hass, freezer):
+    start = datetime.now(UTC)
+    initial = hass.states.get(temperature_entity.entity_id)
+    published = [(26.5, initial)]
+    reports = [(26.5, initial)]
+
+    def changed(event):
+        if event.data["entity_id"] == temperature_entity.entity_id:
+            state = event.data["new_state"]
+            published.append((float(state.state), state))
+
+    unsub = hass.bus.async_listen("state_changed", changed)
+    for seconds in range(5, 300, 5):
+        freezer.move_to(start + timedelta(seconds=seconds))
+        value = 26.51 if 75 <= seconds < 145 else 26.5
+        reports.append((value, State(temperature_entity.entity_id, str(value), last_updated=datetime.now(UTC))))
+        coordinator._handle_transport_message({"temperature": value}, datetime.now(UTC), "udp")
+        async_fire_time_changed(hass, datetime.now(UTC))
+        await hass.async_block_till_done()
+    unsub()
+
+    end = start + timedelta(minutes=5)
+    assert len(published) <= 8
+    assert _time_weighted_arithmetic_mean(published, start, end) == pytest.approx(
+        _time_weighted_arithmetic_mean(reports, start, end), abs=1e-12
+    )
+    assert min(value for value, _ in published) == min(value for value, _ in reports)
+    assert max(value for value, _ in published) == max(value for value, _ in reports)
 
 
 async def test_cached_poll_does_not_republish_observation_time(coordinator, freezer):
