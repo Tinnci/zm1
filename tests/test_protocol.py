@@ -10,8 +10,10 @@ import unittest
 from pathlib import Path
 
 import pytest
+from pytest_socket import SocketConnectBlockedError
 
-pytestmark = pytest.mark.enable_socket
+# Fixtures run after both socket plugins' setup hooks, regardless of load order.
+pytestmark = pytest.mark.usefixtures("socket_enabled")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "custom_components" / "zm1"))
@@ -50,6 +52,13 @@ async def close_after(client, request):
         return await request
     finally:
         await client.async_close()
+
+
+def test_loopback_fixture_preserves_external_connection_restriction() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.05)
+        with pytest.raises(SocketConnectBlockedError):
+            sock.connect(("192.0.2.1", 80))
 
 
 class ProtocolTest(unittest.TestCase):

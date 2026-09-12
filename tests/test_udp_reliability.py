@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.enable_socket
+# Fixtures run after both socket plugins' setup hooks, regardless of load order.
+pytestmark = pytest.mark.usefixtures("socket_enabled")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "zm1"))
 

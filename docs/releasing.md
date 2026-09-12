@@ -21,6 +21,11 @@ also accepts an existing `tag` for a rerun. Every job checks out that tag, reuse
 CI verification and validates project/manifest versions before packaging. GitHub
 notes are generated from history; the existing checksum asset is retained.
 
+The UDP tests exchange real loopback datagrams. They request the `socket_enabled`
+fixture after Home Assistant's socket setup hook, avoiding plugin-order failures
+between local runs and Linux CI. Home Assistant's external-connection restriction
+remains active and has its own regression test.
+
 发布入口仅接受稳定语义版本标签。源代码、官方校验、归档与标签必须对应；普通 CI 和
 发布复用同一验证流程，避免再次用 unittest 漏跑 pytest 测试。实机断报改善与闪存减写
 比例仍需部署后测量，不能由发布测试推断。
