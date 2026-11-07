@@ -353,6 +353,8 @@ class ZM1MqttTransport:
         current_data: Mapping[str, Any],
         device_name: str,
     ) -> dict[str, Any] | None:
+        # Firmware reports brightness with its metadata query, not sensor pushes.
+        await self._async_publish_mqtt({"brightness": None, "version": None, "name": None})
         return None
 
     async def async_send_command(self, values: dict[str, Any]) -> None:

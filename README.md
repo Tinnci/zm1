@@ -63,6 +63,10 @@ official Mosquitto Broker add-on is one option.
 The integration creates a Repairs issue when the Home Assistant MQTT client is
 not ready. It removes the issue after recovery.
 
+MQTT mode sends periodic read-only brightness queries so an unchanged light does
+not expire while sensor reports continue. A query does not renew an observation;
+only its live reply does.
+
 Publishing a command does not update observed state. Only incoming reports do.
 Retained messages have no sampling timestamp, so they cannot establish freshness;
 the integration waits for a live report.

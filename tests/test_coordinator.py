@@ -234,6 +234,24 @@ async def test_mqtt_dispatch_does_not_change_observed_brightness(coordinator, ha
     transport._async_publish_mqtt.assert_awaited_once_with({"brightness": 4})
 
 
+async def test_mqtt_poll_queries_brightness_without_refreshing_cached_observation(coordinator, hass):
+    transport = ZM1MqttTransport(hass, coordinator.entry, mac=MAC, on_message=coordinator._handle_transport_message)
+    coordinator._transport = transport
+    transport._async_publish_mqtt = AsyncMock()
+    old = datetime.now(UTC) - timedelta(seconds=OBSERVATION_TTL + 1)
+    coordinator._handle_transport_message({"brightness": 4}, old, "mqtt")
+    before = coordinator.data
+
+    await coordinator._async_update_data()
+
+    transport._async_publish_mqtt.assert_awaited_once_with({"brightness": None, "version": None, "name": None})
+    assert coordinator.data is before
+    assert not ZM1Light(coordinator).available
+
+    coordinator._handle_transport_message({"brightness": 4}, datetime.now(UTC), "mqtt")
+    assert ZM1Light(coordinator).available
+
+
 async def test_mqtt_retained_values_are_not_fresh_measurements(coordinator, hass):
     handlers = []
     transport = ZM1MqttTransport(hass, coordinator.entry, mac=MAC, on_message=coordinator._handle_transport_message)

@@ -1,6 +1,6 @@
 [project]
 name = "ha-zm1"
-version = "0.3.0"
+version = "0.3.1"
 description = "Home Assistant custom integration for zM1 UDP and MQTT control"
 requires-python = ">=3.12"
 dependencies = []
@@ -15,7 +15,7 @@ override-dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest-homeassistant-custom-component==0.13.367",
+    "pytest-homeassistant-custom-component==0.13.375",
     "ruff>=0.16.10",
 ]
 
